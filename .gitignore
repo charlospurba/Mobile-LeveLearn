@@ -1,0 +1,38 @@
+# Flutter/Dart related
+.dart_tool/
+.packages
+.metadata
+pubspec.lock
+
+# Android related
+android/.gradle/
+android/build/
+android/app/build/
+android/app/google-services.json
+*.keystore
+
+# iOS related
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/GoogleService-Info.plist
+
+# IDE related
+.idea/
+*.iml
+.vscode/
+
+# OS related
+*.DS_Store
+*.log
+
+# Build outputs
+build/
+*.apk
+*.ipa
+
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+app.iml
+devtools_options.yaml

@@ -1,0 +1,125 @@
+name: app
+description: "A new Flutter project."
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_widget_from_html: ^0.16.0
+  percent_indicator: ^4.0.1
+  file_picker: ^8.3.3
+  dotted_border: ^2.1.0
+  shared_preferences: ^2.5.2
+  http: ^1.3.0
+  supabase_flutter: any
+  line_awesome_flutter: any
+  animate_do : any
+  flutter_multi_select_items: any
+  flutter_file_downloader: any
+  open_filex: ^4.3.2
+  carousel_slider: any
+  flutter_image_compress: any
+  path_provider: any
+  path: any
+  confetti: ^0.7.0
+  cupertino_icons: ^1.0.8
+  smooth_page_indicator: ^1.2.1
+  flutter_native_splash: ^2.4.4
+  flutter_launcher_icons: ^0.14.3
+  intl: ^0.20.2
+  fluttertoast: ^8.2.12
+  url_launcher: ^6.3.1
+  lottie: any
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter_native_splash:
+  color: "#441F7F" # Warna latar belakang splash screen (hex color)
+  image: lib/assets/pictures/logo-png.png
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "lib/assets/pictures/logo-full.png"
+  min_sdk_android: 21
+
+flutter:
+
+  uses-material-design: true
+  assets:
+    - lib/assets/alurHCI.png
+    - lib/assets/baganHCI.png
+    - lib/assets/iconjpg.png
+    - lib/assets/iconpdf.png
+    - lib/assets/rocket.png
+    - lib/assets/check.png
+    - lib/assets/1st.png
+    - lib/assets/2nd.png
+    - lib/assets/3rd.png
+    - lib/assets/empty.png
+    - lib/assets/starempty.png
+    - lib/assets/starfilled.png
+    - lib/assets/learnbg.png
+    - lib/assets/pictures/background-pattern.png
+    - lib/assets/pictures/background-pattern-L.png
+    - lib/assets/pictures/dashboard.png
+    - lib/assets/pictures/imk-picture.jpg
+    - lib/assets/pictures/splash.png
+    - lib/assets/vectors/welcome_primary.png
+    - lib/assets/vectors/artlover-secondary.svg
+    - lib/assets/vectors/designergirl-secondary.svg
+    - lib/assets/vectors/gameday-secondary.svg
+    - lib/assets/vectors/gaming-primary.svg
+    - lib/assets/vectors/gaming-secondarysvg.svg
+    - lib/assets/vectors/onlineart-secondary.svg
+    - lib/assets/vectors/socialinfluencer-primary.svg
+    - lib/assets/vectors/socialshare-primary.svg
+    - lib/assets/vectors/winterdesign-secondary.svg
+    - lib/assets/vectors/socialshare-primary.png
+    - lib/assets/vectors/socialinfluencer-primary.png
+    - lib/assets/vectors/gaming-primary.png
+    - lib/assets/vectors/learn.png
+    - lib/assets/pictures/background-pattern.png
+    - lib/assets/pictures/background-pattern-L.png
+    - lib/assets/pictures/icon.png
+    - lib/assets/pictures/logo-full.png
+    - lib/assets/pictures/logo-png.png
+    - lib/assets/pictures/about-header.png
+    - lib/assets/pictures/about-logo.png
+    - lib/assets/pictures/docker.png
+    - lib/assets/pictures/flutter.png
+    - lib/assets/pictures/mysql.png
+    - lib/assets/pictures/node.png
+    - lib/assets/pictures/react.png
+    - lib/assets/pictures/supabase.png
+    - lib/assets/badges/imk-2.png
+    - lib/assets/badges/imk-1.png
+    - lib/assets/badges/imk-3.png
+    - lib/assets/pixels/assessment-pixel.png
+    - lib/assets/pixels/assignment-pixel.png
+    - lib/assets/pixels/check.png
+    - lib/assets/pixels/lock-pixel.png
+    - lib/assets/pixels/material-pixel.png
+    - lib/assets/pixels/star.png
+    - lib/assets/pixels/time-pixel.png
+    - lib/assets/leaderboards/banner-bronze.png
+    - lib/assets/leaderboards/banner-bronze-vertical.png
+    - lib/assets/leaderboards/banner-gold.png
+    - lib/assets/leaderboards/banner-gold-vertical.png
+    - lib/assets/leaderboards/banner-silver.png
+    - lib/assets/leaderboards/banner-silver-vertical.png
+  fonts:
+    - family: DIN_Next_Rounded
+      fonts:
+        - asset: lib/assets/fonts/DIN_Next_Rounded_Regular.ttf
+    - family: Modak
+      fonts:
+        - asset: lib/assets/fonts/Modak-Regular.ttf
