@@ -40,7 +40,6 @@ class _QuickAccessScreenState extends State<QuickAccessScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

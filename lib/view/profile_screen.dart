@@ -17,7 +17,17 @@ import '../model/user.dart';
 import '../service/course_service.dart';
 import '../utils/colors.dart';
 import 'login_screen.dart';
-import 'main_screen.dart';
+// import 'main_screen.dart'; // Unused import
+
+// Definisi model Avatar
+class AvatarModel {
+  final int id;
+  // Gunakan String untuk path/URL gambar
+  final String imageUrl;
+  final int price;
+
+  AvatarModel({required this.id, required this.imageUrl, required this.price});
+}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -36,6 +46,25 @@ class _ProfileState extends State<ProfileScreen> {
   Course? course;
   Chapter? chapter;
   List<Course>? allCourses;
+
+  // Data Avatar yang tersedia
+  List<AvatarModel> availableAvatars = [
+    AvatarModel(id: 1, imageUrl: 'lib/assets/avatars/avatar1.png', price: 0),
+    AvatarModel(id: 2, imageUrl: 'lib/assets/avatars/avatar2.png', price: 100),
+    AvatarModel(id: 3, imageUrl: 'lib/assets/avatars/avatar3.png', price: 100),
+    AvatarModel(id: 4, imageUrl: 'lib/assets/avatars/avatar4.png', price: 100),
+    AvatarModel(id: 5, imageUrl: 'lib/assets/avatars/avatar5.png', price: 100),
+    AvatarModel(id: 6, imageUrl: 'lib/assets/avatars/avatar6.png', price: 100),
+    AvatarModel(id: 7, imageUrl: 'lib/assets/avatars/avatar7.png', price: 100),
+    AvatarModel(id: 8, imageUrl: 'lib/assets/avatars/avatar8.png', price: 100),
+    AvatarModel(id: 9, imageUrl: 'lib/assets/avatars/avatar9.png', price: 100),
+    AvatarModel(
+        id: 10, imageUrl: 'lib/assets/avatars/avatar10.png', price: 100),
+    AvatarModel(
+        id: 11, imageUrl: 'lib/assets/avatars/avatar11.png', price: 100),
+    AvatarModel(
+        id: 12, imageUrl: 'lib/assets/avatars/avatar12.png', price: 100),
+  ];
 
   @override
   void initState() {
@@ -59,7 +88,7 @@ class _ProfileState extends State<ProfileScreen> {
   }
 
   List<Student> sortUserbyPoint(List<Student> list) {
-    print(list);
+    // print(list); // Avoid print in production code
     list.sort((a, b) => b.points!.compareTo(a.points!));
     return list;
   }
@@ -70,7 +99,7 @@ class _ProfileState extends State<ProfileScreen> {
       list = sortUserbyPoint(studentRole(result));
     });
     for (int i = 0; i < list.length; i++) {
-      if(list[i].id == user?.id){
+      if (list[i].id == user?.id) {
         setState(() {
           rank = i + 1;
         });
@@ -111,341 +140,416 @@ class _ProfileState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    var isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
-    return isLoading ? Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage(
-                'lib/assets/pictures/background-pattern.png'
-            ),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: SizedBox(
-            width: double.infinity,
-            height: double.infinity,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 10), // Space between progress bar and text
-                  Text("Mohon Tunggu", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            )
-        ),
-      )
-    ) : Scaffold(
-      appBar: AppBar(
-        backgroundColor: GlobalVar.primaryColor,
-        // leading: IconButton(
-        //     onPressed: (){
-        //       Navigator.pushReplacement(
-        //         context,
-        //         MaterialPageRoute(
-        //             builder: (context) => Mainscreen()),
-        //       );
-        //     },
-        //     icon: Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white,)
-        // ),
-        automaticallyImplyLeading: false,
-        title: Text(
-            "Profile",
-            style: TextStyle(
-                fontFamily: 'DIN_Next_Rounded',
-                color: Colors.white
-            )),
-        // actions: [IconButton(onPressed: (){}, icon: Icon(isDark ? LineAwesomeIcons.sun : LineAwesomeIcons.moon))],
-      ),
-      body:  Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-                image: DecorationImage(
-                    image: AssetImage(
-                        'lib/assets/pictures/background-pattern.png'),
-                    fit: BoxFit.cover
-                )
-            ),
-          ),
-          isLoading 
-          ? Scaffold(
-            backgroundColor: Colors.transparent,
+    var isDark =
+        MediaQuery.of(context).platformBrightness == Brightness.dark; // Unused
+    return isLoading
+        ? Scaffold(
             body: Container(
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage(
-                      'lib/assets/pictures/background-pattern.png'
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage('lib/assets/pictures/background-pattern.png'),
+                fit: BoxFit.cover,
+              ),
+            ),
+            child: SizedBox(
+                width: double.infinity,
+                height: double.infinity,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(
+                          height: 10), // Space between progress bar and text
+                      Text(
+                        "Mohon Tunggu",
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
-                  fit: BoxFit.cover,
-                ),
-              ),
-              child: SizedBox(
-                  width: double.infinity,
-                  height: double.infinity,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 10), // Space between progress bar and text
-                        Text("Mohon Tunggu", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  )
-              ),
-            )
-          ) 
-          : Scaffold(
-            backgroundColor: Colors.transparent,
+                )),
+          ))
+        : Scaffold(
+            appBar: AppBar(
+              backgroundColor: GlobalVar.primaryColor,
+              automaticallyImplyLeading: false,
+              title: Text("Profile",
+                  style: TextStyle(
+                      fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
+            ),
             body: Stack(
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    image: DecorationImage(
-                        image: AssetImage(
-                            'lib/assets/pictures/background-pattern.png'),
-                        fit: BoxFit.cover
-                    )
-                  ),
+                      image: DecorationImage(
+                          image: AssetImage(
+                              'lib/assets/pictures/background-pattern.png'),
+                          fit: BoxFit.cover)),
                 ),
-                SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      Container(
-                        color: GlobalVar.primaryColor,
+                isLoading
+                    ? Scaffold(
+                        backgroundColor: Colors.transparent,
+                        body: Container(
+                          decoration: BoxDecoration(
+                            image: DecorationImage(
+                              image: AssetImage(
+                                  'lib/assets/pictures/background-pattern.png'),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          child: SizedBox(
+                              width: double.infinity,
+                              height: double.infinity,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(
+                                        height:
+                                            10), // Space between progress bar and text
+                                    Text(
+                                      "Mohon Tunggu",
+                                      style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              )),
+                        ))
+                    : SingleChildScrollView(
                         child: Column(
                           children: [
-                            Stack(
-                              children: [
-                                SizedBox(
-                                  width: 120,
-                                  height: 120,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(100),
-                                    child: user?.image != "" && user?.image != null ? Image.network(user!.image!, fit: BoxFit.cover,)
-                                        : Icon(Icons.person, size: 100, color: Colors.white,),
-                                  ),
-                                ),
-                              Positioned(
-                                  bottom: 0,
-                                  right: 0,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(builder: (context) => UpdateProfile(user: user!,)),
-                                      );
-                                    },
-                                    child: Container(
-                                      width: 35,
-                                      height: 35,
-                                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), color: GlobalVar.secondaryColor),
-                                      child: const Icon(
-                                        LineAwesomeIcons.pencil_alt_solid,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  )
-                              )
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(user!.name,
-                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                  fontFamily: 'DIN_Next_Rounded',
-                                  color: Colors.white
-                              )),
-                          Text(user!.studentId!,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  fontFamily: 'DIN_Next_Rounded',
-                                  color: GlobalVar.accentColor
-                              )),
-                          const SizedBox(height: 16),
-                          // const Divider(),
-                          Container(
-                            margin: EdgeInsets.symmetric(horizontal: 32),
-                            padding: EdgeInsets.all(8.0),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10.0),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              spacing: 24,
-                              children: [
-                                _buildInfoColumn(LineAwesomeIcons.medal_solid,
-                                    'Lencana', '${userBadges?.length}', GlobalVar.secondaryColor),
-                                _buildInfoColumn(LineAwesomeIcons.user_check_solid,
-                                    'Course', '${allCourses != null ? allCourses?.length : '0'}', GlobalVar.secondaryColor),
-                                _buildInfoColumn(LineAwesomeIcons.trophy_solid,
-                                    'Peringkat', '$rank / ${list.length}', GlobalVar.secondaryColor),
-                                _buildInfoColumn(LineAwesomeIcons.gem_solid,
-                                    'Poin', '${user?.points ?? 0}', GlobalVar.secondaryColor)
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                        ],
-                      ),
-                    ),
-                      SizedBox(
-                      height: 4,
-                    ),
-                      Container(
-                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.3),
-                            spreadRadius: 2,
-                            blurRadius: 5,
-                            offset: Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      padding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            height: 8,
-                          ),
-                          Text(
-                            'Lencana Saya',
-                            textAlign: TextAlign.start,
-                            style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                              fontWeight: FontWeight.bold,
+                            Container(
                               color: GlobalVar.primaryColor,
-                              fontFamily: 'DIN_Next_Rounded',
-                            ),
-                          ),
-                          SizedBox(
-                            height: 8,
-                          ),
-                          SizedBox(
-                            height: 64,
-                            child: userBadges!.isNotEmpty ? ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: userBadges?.length,
-                              itemBuilder: (context, index) {
-                                return GestureDetector(
-                                  onTap: () {
-                                    _showBadgeDetails(context, userBadges![index].badge);
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: userBadges?[index].badge.image != null && userBadges?[index].badge.image != '' ?
-                                      Image.network(userBadges![index].badge.image!, fit: BoxFit.cover) : Image.asset('lib/assets/pictures/icon.png', fit: BoxFit.cover)
+                              child: Column(
+                                children: [
+                                  Stack(
+                                    children: [
+                                      SizedBox(
+                                        width: 120,
+                                        height: 120,
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              BorderRadius.circular(100),
+                                          child: user?.image != "" &&
+                                                  user?.image != null
+                                              ? Image.network(
+                                                  user!.image!,
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : Icon(
+                                                  Icons.person,
+                                                  size: 100,
+                                                  color: Colors.white,
+                                                ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        bottom: 0,
+                                        right: 0,
+                                        child: GestureDetector(
+                                          onTap: () async {
+                                            // [FIX] Navigasi ke UpdateProfile dengan parameter Avatar
+                                            final result = await Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                  builder: (context) =>
+                                                      UpdateProfile(
+                                                        user: user!,
+                                                        availableAvatars:
+                                                            availableAvatars, // Meneruskan data avatar
+                                                      )),
+                                            );
+                                            if (result == true) {
+                                              getUserData();
+                                            }
+                                          },
+                                          child: Container(
+                                            width: 35,
+                                            height: 35,
+                                            decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(100),
+                                                color:
+                                                    GlobalVar.secondaryColor),
+                                            child: const Icon(
+                                              LineAwesomeIcons.pencil_alt_solid,
+                                              color: Colors.white,
+                                              size: 20,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(user!.name,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineMedium
+                                          ?.copyWith(
+                                              fontFamily: 'DIN_Next_Rounded',
+                                              color: Colors.white)),
+                                  Text(user!.studentId!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                              fontFamily: 'DIN_Next_Rounded',
+                                              color: GlobalVar.accentColor)),
+                                  const SizedBox(height: 16),
+                                  // const Divider(),
+                                  Container(
+                                    margin:
+                                        EdgeInsets.symmetric(horizontal: 32),
+                                    padding: EdgeInsets.all(8.0),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(10.0),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        _buildInfoColumn(
+                                            LineAwesomeIcons.medal_solid,
+                                            'Lencana',
+                                            '${userBadges?.length}',
+                                            GlobalVar.secondaryColor),
+                                        _buildInfoColumn(
+                                            LineAwesomeIcons.user_check_solid,
+                                            'Course',
+                                            '${allCourses != null ? allCourses?.length : '0'}',
+                                            GlobalVar.secondaryColor),
+                                        _buildInfoColumn(
+                                            LineAwesomeIcons.trophy_solid,
+                                            'Peringkat',
+                                            '$rank / ${list.length}',
+                                            GlobalVar.secondaryColor),
+                                        _buildInfoColumn(
+                                            LineAwesomeIcons.gem_solid,
+                                            'Poin',
+                                            '${user?.points ?? 0}',
+                                            GlobalVar.secondaryColor)
+                                      ],
                                     ),
                                   ),
-                                );
-                              },
-                            ) : Center(
-                              child: Text('Kamu belum mempunyai badge', style: TextStyle(fontFamily: 'DIN_Next_Rounded'),),
-                            )
-                          ),
-                          SizedBox(
-                            height: 8,
-                          ),
-                        ],
-                      ),
-                    ),
-                      ProfileMenuWidget(
-                        title: "Trades",
-                        icon: LineAwesomeIcons.coins_solid,
-                        onPress: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => TradeScreen(user: user!,)),
-                          );
-                        },
-                      ),
-                      ProfileMenuWidget(
-                        title: "Update Profile",
-                        icon: LineAwesomeIcons.person_booth_solid,
-                        onPress: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => UpdateProfile(user: user!,)),
-                          );
-                        },
-                      ),
-                      ProfileMenuWidget(
-                        title: "Quick Access",
-                        icon: LineAwesomeIcons.accessible,
-                        onPress: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => QuickAccessScreen()),
-                          );
-                        },
-                      ),
-                      ProfileMenuWidget(
-                        title: "App Rating",
-                        icon: LineAwesomeIcons.star,
-                        onPress: () {},
-                      ),
-                      ProfileMenuWidget(
-                        title: "About App",
-                        icon: LineAwesomeIcons.info_circle_solid,
-                        onPress: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => AboutAppScreen()),
-                          );
-                        },
-                      ),
-                      SizedBox(
-                          height: 16
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                              onPressed: () {
-                                logout();
-                                Navigator.pushReplacement(
+                                  const SizedBox(height: 32),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(
+                              // Fixed "Illegal character '160'." and syntax errors in surrounding lines
+                              height: 4,
+                            ),
+                            Container(
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical:
+                                      16), // Fixed "Illegal character '160'."
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.grey.withOpacity(0.3),
+                                    spreadRadius: 2,
+                                    blurRadius: 5,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                  horizontal:
+                                      8), // Fixed "Illegal character '160'."
+                              child: Column(
+                                children: [
+                                  const SizedBox(
+                                    // Fixed "Illegal character '160'."
+                                    height: 8,
+                                  ),
+                                  Text(
+                                    'Lencana Saya',
+                                    textAlign: TextAlign.start,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium!
+                                        .copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          color: GlobalVar.primaryColor,
+                                          fontFamily: 'DIN_Next_Rounded',
+                                        ),
+                                  ),
+                                  const SizedBox(
+                                    // Fixed "Illegal character '160'."
+                                    height: 8,
+                                  ),
+                                  SizedBox(
+                                      height: 64,
+                                      child: userBadges!.isNotEmpty
+                                          ? ListView.builder(
+                                              scrollDirection: Axis.horizontal,
+                                              itemCount: userBadges?.length,
+                                              itemBuilder: (context, index) {
+                                                return GestureDetector(
+                                                  onTap: () {
+                                                    _showBadgeDetails(
+                                                        context,
+                                                        userBadges![index]
+                                                            .badge);
+                                                  },
+                                                  child: Padding(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 8.0),
+                                                    child: ClipRRect(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                                8),
+                                                        child: userBadges?[index]
+                                                                        .badge
+                                                                        .image !=
+                                                                    null &&
+                                                                userBadges?[index]
+                                                                        .badge
+                                                                        .image !=
+                                                                    ''
+                                                            ? Image.network(
+                                                                userBadges![index]
+                                                                    .badge
+                                                                    .image!,
+                                                                fit: BoxFit
+                                                                    .cover)
+                                                            : Image.asset(
+                                                                'lib/assets/pictures/icon.png',
+                                                                fit: BoxFit.cover)),
+                                                  ),
+                                                );
+                                              },
+                                            )
+                                          : Center(
+                                              child: Text(
+                                                'Kamu belum mempunyai badge',
+                                                style: TextStyle(
+                                                    fontFamily:
+                                                        'DIN_Next_Rounded'),
+                                              ),
+                                            )),
+                                  const SizedBox(
+                                    // Fixed "Illegal character '160'."
+                                    height: 8,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ProfileMenuWidget(
+                              title: "Trades",
+                              icon: LineAwesomeIcons.coins_solid,
+                              onPress: () {
+                                Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                      builder: (context) => LoginScreen()),
+                                      builder: (context) => TradeScreen(
+                                            user: user!,
+                                          )),
                                 );
                               },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: GlobalVar.primaryColor,
-                                side: BorderSide.none,
-                                shape: const StadiumBorder(),
+                            ),
+                            ProfileMenuWidget(
+                              title: "Update Profile",
+                              icon: LineAwesomeIcons.person_booth_solid,
+                              onPress: () async {
+                                // [FIX] Navigasi ke UpdateProfile dengan parameter Avatar
+                                final result = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => UpdateProfile(
+                                            user: user!,
+                                            availableAvatars:
+                                                availableAvatars, // Meneruskan data avatar
+                                          )),
+                                );
+                                if (result == true) {
+                                  getUserData();
+                                }
+                              },
+                            ),
+                            ProfileMenuWidget(
+                              title: "Quick Access",
+                              icon: LineAwesomeIcons.accessible,
+                              onPress: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) =>
+                                          QuickAccessScreen()),
+                                );
+                              },
+                            ),
+                            ProfileMenuWidget(
+                              title: "App Rating",
+                              icon: LineAwesomeIcons.star,
+                              onPress: () {},
+                            ),
+                            ProfileMenuWidget(
+                              title: "About App",
+                              icon: LineAwesomeIcons.info_circle_solid,
+                              onPress: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (context) => AboutAppScreen()),
+                                );
+                              },
+                            ),
+                            const SizedBox(
+                                // Fixed "Illegal character '160'."
+                                height: 16),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                    onPressed: () {
+                                      logout();
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) =>
+                                                LoginScreen()),
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: GlobalVar.primaryColor,
+                                      side: BorderSide.none,
+                                      shape: const StadiumBorder(),
+                                    ),
+                                    child: Text(
+                                      "Log Out",
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium!
+                                          .copyWith(
+                                              fontFamily: 'DIN_Next_Rounded',
+                                              color: Colors.white),
+                                    )),
                               ),
-                              child: Text("Log Out", style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                                  fontFamily: 'DIN_Next_Rounded',
-                                  color: Colors.white
-                              ),)
-                          ),
+                            ),
+                            const SizedBox(
+                                // Fixed "Illegal character '160'."
+                                height: 16),
+                          ],
                         ),
-                      ),
-                      SizedBox(
-                          height: 16
-                      ),
-                    ],
-                  ),
-                )
+                      )
               ],
-            ),
-          ),
-        ]
-      )
-    );
+            ));
   }
 
   void _showBadgeDetails(BuildContext context, BadgeModel badge) async {
@@ -465,13 +569,15 @@ class _ProfileState extends State<ProfileScreen> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
-                  child: badge.image != null  ?
-                  Image.network(badge.image!, fit: BoxFit.cover) : Image.asset('lib/assets/pictures/icon.png', fit: BoxFit.cover),
+                  child: badge.image != null
+                      ? Image.network(badge.image!, fit: BoxFit.cover)
+                      : Image.asset('lib/assets/pictures/icon.png',
+                          fit: BoxFit.cover),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 Text(
                   badge.name,
                   style: TextStyle(
@@ -485,7 +591,7 @@ class _ProfileState extends State<ProfileScreen> {
                   '(${badge.type})',
                   style: TextStyle(fontFamily: 'DIN_Next_Rounded'),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
                   'Badge ini diperoleh karena telah berhasil menyelesaikan ${course!.courseName} sampai pada chapter ${chapter!.name}',
                   textAlign: TextAlign.center,
@@ -498,14 +604,14 @@ class _ProfileState extends State<ProfileScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryColor
-                  ),
+                      backgroundColor: AppColors.primaryColor),
                   onPressed: () {
                     Navigator.pop(context);
                   },
                   child: Text(
                     'Tutup',
-                    style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white),
+                    style: TextStyle(
+                        fontFamily: 'DIN_Next_Rounded', color: Colors.white),
                   ),
                 ),
               ),
@@ -522,20 +628,23 @@ class _ProfileState extends State<ProfileScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-
-        SizedBox(width: 4),
+        // Menggunakan kolom di sini untuk menampung Icon dan Text,
+        // menghilangkan Row di level teratas untuk meminimalkan padding.
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(icon, color: color, size: 28,),
+            Icon(
+              icon,
+              color: color,
+              size: 28,
+            ),
             Text(
               label,
               style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                // fontWeight: FontWeight.bold,
-                color: Colors.black,
-                fontFamily:
-                'DIN_Next_Rounded',
-              ),
+                    // fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                    fontFamily: 'DIN_Next_Rounded',
+                  ),
             ),
             Text(value,
                 style: Theme.of(context).textTheme.titleMedium!.copyWith(
@@ -550,14 +659,13 @@ class _ProfileState extends State<ProfileScreen> {
 }
 
 class ProfileMenuWidget extends StatelessWidget {
-  const ProfileMenuWidget({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.onPress,
-    this.endIcon = true,
-    this.textColor
-  });
+  const ProfileMenuWidget(
+      {super.key,
+      required this.title,
+      required this.icon,
+      required this.onPress,
+      this.endIcon = true,
+      this.textColor});
 
   final String title;
   final IconData icon;
@@ -567,37 +675,39 @@ class ProfileMenuWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
-          onTap: onPress,
-          leading: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(100),
-              color: AppColors.primaryColor,
-            ),
-            child: Icon(icon, color: Colors.white),
+        onTap: onPress,
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(100),
+            color: AppColors.primaryColor,
           ),
-          title: Text(title, style: Theme
-              .of(context)
-              .textTheme
-              .bodyMedium
-              ?.copyWith(
-            color: textColor,
-            fontFamily: 'DIN_Next_Rounded',
-          )),
-          trailing: endIcon ? Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(100),
-                color: Colors.grey.withOpacity(0.1),
-              ),
-              child: const Icon(LineAwesomeIcons.angle_right_solid, size: 18.0,
-                  color: Colors.grey)) : null
+          child: Icon(icon, color: Colors.white),
+        ),
+        title: Text(title,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: textColor,
+                  fontFamily: 'DIN_Next_Rounded',
+                )),
+        trailing: endIcon
+            ? Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(100),
+                  color: Colors.grey.withOpacity(0.1),
+                ),
+                child: const Icon(
+                  LineAwesomeIcons.angle_right_solid,
+                  size: 18.0,
+                  color: Colors.grey,
+                ),
+              )
+            : null,
       ),
     );
   }
