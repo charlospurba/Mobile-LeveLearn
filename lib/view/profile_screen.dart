@@ -76,19 +76,13 @@ class _ProfileState extends State<ProfileScreen> {
   Future<void> getUserData() async {
     prefs = await SharedPreferences.getInstance();
     final idUser = prefs.getInt('userId');
-    
-    if (mounted) {
-      setState(() {
-        streakDays = prefs.getInt('streakDays') ?? 0;
-      });
-    }
 
     if (idUser != null) {
       Student fetchedUser = await UserService.getUserById(idUser);
       if (mounted) {
         setState(() {
           user = fetchedUser;
-          isLoading = false;
+          streakDays = fetchedUser.streak;
         });
       }
       getUserBadges(idUser);
@@ -120,7 +114,13 @@ class _ProfileState extends State<ProfileScreen> {
 
   Future<void> getUserBadges(int userId) async {
     final result = await BadgeService.getUserBadgeListByUserId(userId);
-    if (mounted) setState(() => userBadges = result);
+    if (mounted) {
+      setState(() {
+        // FILTER: Kunci utama agar sinkron dengan Avatar
+        userBadges = result.where((b) => !b.isPurchased).toList();
+        isLoading = false;
+      });
+    }
   }
 
   void logout() async {
@@ -190,9 +190,9 @@ class _ProfileState extends State<ProfileScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primaryColor.withOpacity(0.1),
+              color: AppColors.primaryColor.withAlpha(25), 
               borderRadius: BorderRadius.circular(25.0),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
+              border: Border.all(color: Colors.white.withAlpha(50)),
             ),
             child: Column(
               children: [
@@ -205,6 +205,7 @@ class _ProfileState extends State<ProfileScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
+                        // Statistik Badge mengambil dari list yang sudah difilter
                         BadgeStat(count: userBadges?.length ?? 0),
                         CourseStat(count: allCourses?.length ?? 0),
                         RankStat(rank: rank, total: list.length),
@@ -276,7 +277,7 @@ class _ProfileState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.2), spreadRadius: 2, blurRadius: 5)],
+        boxShadow: [BoxShadow(color: Colors.grey.withAlpha(50), spreadRadius: 2, blurRadius: 5)],
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -292,14 +293,26 @@ class _ProfileState extends State<ProfileScreen> {
                     itemCount: userBadges?.length,
                     itemBuilder: (context, index) {
                       final badge = userBadges![index].badge;
+                      if (badge == null) return const SizedBox();
+                      
+                      // PERBAIKAN: Bersihkan URL double slash agar gambar tidak error
+                      String fixUrl = badge.image ?? "";
+                      if (fixUrl.contains("badges//")) {
+                        fixUrl = fixUrl.replaceAll("badges//", "badges/");
+                      }
+
                       return GestureDetector(
                         onTap: () => _showBadgeDetails(context, badge),
                         child: Padding(
                           padding: const EdgeInsets.only(right: 12),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: badge.image != null && badge.image != ''
-                                ? Image.network(badge.image!, width: 60, height: 60, fit: BoxFit.cover)
+                            child: fixUrl != ''
+                                ? Image.network(
+                                    fixUrl, 
+                                    width: 60, height: 60, fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Image.asset('lib/assets/pictures/icon.png', width: 60, height: 60),
+                                  )
                                 : Image.asset('lib/assets/pictures/icon.png', width: 60, height: 60, fit: BoxFit.cover),
                           ),
                         ),
@@ -387,7 +400,7 @@ class ProfileMenuWidget extends StatelessWidget {
       onTap: onPress,
       leading: Container(
         width: 40, height: 40,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), color: AppColors.primaryColor.withOpacity(0.1)),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), color: AppColors.primaryColor.withAlpha(25)),
         child: Icon(icon, color: AppColors.primaryColor),
       ),
       title: Text(title, style: TextStyle(color: textColor, fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.w600)),

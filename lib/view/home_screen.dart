@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:app/model/user.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
+import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/course.dart';
@@ -12,7 +13,7 @@ import '../service/user_service.dart';
 import '../utils/colors.dart';
 import 'login_screen.dart';
 
-// IMPORT KOMPONEN GAMIFICATION
+// IMPORT KOMPONEN DARI FOLDER GAMIFICATION
 import 'package:app/view/gamification/badge_stat.dart';
 import 'package:app/view/gamification/course_stat.dart';
 import 'package:app/view/gamification/rank_stat.dart';
@@ -47,15 +48,11 @@ class _HomeState extends State<Homescreen> {
     super.initState();
     getUserFromSharedPreference().then((_) {
       getAllUser();
-      // Sinkronisasi tampilan streak awal dari data user
-      if (user != null) {
-        setState(() => streakDays = user!.streak);
-      }
     });
     getEnrolledCourse();
   }
 
-  // --- LOGIKA STREAK TERBARU (SINKRON DB) ---
+  // --- LOGIKA STREAK BARU (SINKRON DATABASE) ---
   Future<void> handleStreakInteraction() async {
     if (user == null) return;
 
@@ -75,33 +72,26 @@ class _HomeState extends State<Homescreen> {
       final int difference = today.difference(lastDate).inDays;
 
       if (difference == 0) {
-        // Sudah interaksi hari ini
         return; 
       } else if (difference == 1) {
-        // Hari baru berurutan
         currentStreak++;
       } else {
-        // Bolos > 1 hari, reset
         currentStreak = 1;
       }
     } else {
-      // Interaksi pertama
       currentStreak = 1;
     }
 
-    // Update UI & Object
     setState(() {
       streakDays = currentStreak;
       user!.streak = currentStreak;
       user!.lastInteraction = now;
     });
 
-    // Simpan ke DB
     try {
-      await UserService.updateUser(user!);
-      debugPrint("Streak synced to database: $currentStreak");
+      await UserService.updateUser(user!); 
     } catch (e) {
-      debugPrint("Database sync failed: $e");
+      debugPrint("Failed to sync streak: $e");
     }
   }
 
@@ -133,14 +123,18 @@ class _HomeState extends State<Homescreen> {
           await pref.setInt('lastestSelectedCourse', foundCourse.id);
         }
 
+        // Ambil badge untuk mengupdate statistik Badges
+        final badgeResult = await BadgeService.getUserBadgeListByUserId(id);
+
         setState(() {
           lastestCourse = foundCourse;
-          streakDays = user?.streak ?? 0; // Sync streak dari data API
+          streakDays = user?.streak ?? 0;
+          // FILTER: Hanya ambil badge yang belum ditukarkan
+          userBadges = badgeResult.where((b) => !b.isPurchased).toList();
           isLoading = false;
         });
       } catch (e) {
         setState(() => isLoading = false);
-        debugPrint("Error: $e");
       }
     }
   }
@@ -183,12 +177,18 @@ class _HomeState extends State<Homescreen> {
 
   Future<void> getUserBadges(int userId) async {
     final result = await BadgeService.getUserBadgeListByUserId(userId);
-    setState(() => userBadges = result);
+    setState(() {
+      // FILTER: Badge stat di home harus sinkron dengan profile
+      userBadges = result.where((b) => !b.isPurchased).toList();
+    });
   }
 
   void logout() async {
     pref = await SharedPreferences.getInstance();
-    pref.clear();
+    pref.remove('userId');
+    pref.remove('name');
+    pref.remove('role');
+    pref.remove('token');
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
   }
 
@@ -214,24 +214,20 @@ class _HomeState extends State<Homescreen> {
             ),
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : RefreshIndicator(
-                    onRefresh: getEnrolledCourse,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 50),
-                          _buildProfileHeader(),
-                          _buildStatsDashboard(),
-                          ProgressCard(
-                            lastestCourse: lastestCourse,
-                            onTap: () => widget.updateIndex(2),
-                          ),
-                          _buildExploreSection(),
-                          LeaderboardList(students: list),
-                          const SizedBox(height: 30),
-                        ],
-                      ),
+                : SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 50),
+                        _buildProfileHeader(),
+                        _buildStatsDashboard(),
+                        ProgressCard(
+                          lastestCourse: lastestCourse,
+                          onTap: () => widget.updateIndex(2),
+                        ),
+                        _buildExploreSection(),
+                        LeaderboardList(students: list),
+                        const SizedBox(height: 30),
+                      ],
                     ),
                   ),
           ),
@@ -283,11 +279,15 @@ class _HomeState extends State<Homescreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+                mainAxisAlignment: MainAxisAlignment.start, 
                 children: [
+                  // Gunakan userBadges.length hasil filter agar sinkron
                   BadgeStat(count: userBadges?.length ?? 0),
+                  const SizedBox(width: 24),
                   CourseStat(count: allCourses.length),
+                  const SizedBox(width: 24),
                   RankStat(rank: rank, total: list.length),
+                  const SizedBox(width: 24),
                   StreakStat(days: streakDays),
                 ],
               ),
@@ -318,9 +318,7 @@ class _HomeState extends State<Homescreen> {
                   final course = allCourses[index];
                   return GestureDetector(
                     onTap: () async {
-                      // TRIGGER STREAK SAAT MEMBUKA COURSE
-                      await handleStreakInteraction(); 
-                      
+                      await handleStreakInteraction();
                       await pref.setInt('lastestSelectedCourse', course.id);
                       setState(() {
                         lastestCourse = course;
