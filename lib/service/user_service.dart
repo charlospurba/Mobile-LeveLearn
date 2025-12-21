@@ -26,8 +26,7 @@ class UserService {
 
   static Future<Student> getUserById(int id) async {
     try {
-      final response =
-          await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$id'));
+      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$id'));
       final body = response.body;
       final result = jsonDecode(body);
       Student users = Student.fromJson(result);
@@ -37,25 +36,17 @@ class UserService {
     }
   }
 
-  static Future<Map<String, dynamic>> login(
-      String username, String password) async {
+  static Future<Map<String, dynamic>> login(String username, String password) async {
     final uri = Uri.parse('${GlobalVar.baseUrl}/login');
     final request = {'username': username, 'password': password};
     try {
       print('LOGIN -> POST $uri');
-      print('Request body: $request');
-
-      final response = await http
-          .post(uri,
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              },
-              body: jsonEncode(request))
-          .timeout(const Duration(seconds: 10)); // protect against hangs
-
-      print('HTTP ${response.statusCode}');
-      print('Response body: ${response.body}');
+      final response = await http.post(uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: jsonEncode(request)).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
@@ -67,30 +58,16 @@ class UserService {
         );
         return {'value': login, 'code': 200};
       } else {
-        final body = response.body.isNotEmpty
-            ? jsonDecode(response.body)
-            : {'message': 'Empty response'};
-        return {
-          'code': response.statusCode,
-          'message': body['message'] ?? body
-        };
+        final body = response.body.isNotEmpty ? jsonDecode(response.body) : {'message': 'Empty response'};
+        return {'code': response.statusCode, 'message': body['message'] ?? body};
       }
-    } on SocketException catch (e) {
-      // network-level error (no route to host etc)
-      return {'code': 0, 'message': 'Network error: ${e.message}'};
-    } on FormatException catch (e) {
-      // response was not valid JSON
-      return {'code': 0, 'message': 'Response format error: ${e.message}'};
-    } on http.ClientException catch (e) {
-      return {'code': 0, 'message': 'HTTP client error: ${e.message}'};
-    } on TimeoutException {
-      return {'code': 0, 'message': 'Request timeout'};
     } catch (e) {
       return {'code': 0, 'message': e.toString()};
     }
   }
 
-  static Future<Student> updateUser(Student user) async {
+  // --- PERBAIKAN: Memastikan mapping response sesuai dengan struktur 'user' dari backend ---
+static Future<Student> updateUser(Student user) async {
     try {
       Map<String, dynamic> request = {
         "name": user.name,
@@ -101,43 +78,39 @@ class UserService {
         "totalCourses": user.totalCourses,
         "badges": user.badges,
         "image": user.image,
+        // --- TAMBAHKAN SINKRONISASI STREAK ---
+        "streak": user.streak,
+        "lastInteraction": user.lastInteraction?.toIso8601String(),
         "instructorId": user.instructorId,
         "instructorCourses": user.instructorCourses
       };
-      final response =
-          await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-              headers: {
-                'Content-type': 'application/json; charset=utf-8',
-                'Accept': 'application/json',
-              },
-              body: jsonEncode(request));
+      final response = await http.put(
+          Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(request));
 
-      final body = response.body;
-      // print(body);
-      final result = jsonDecode(body);
-      // print(result);
-      Student users = Student.fromJson(result['user']);
-      return users;
+      final result = jsonDecode(response.body);
+      Student updatedUser = Student.fromJson(result['user'] ?? result['data'] ?? result);
+      return updatedUser;
     } catch (e) {
       throw Exception(e.toString());
     }
   }
-
   static Future<void> updatePassword(Student user) async {
     try {
       Map<String, dynamic> request = {
         "password": user.password,
       };
-      final response =
-          await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-              headers: {
-                'Content-type': 'application/json; charset=utf-8',
-                'Accept': 'application/json',
-              },
-              body: jsonEncode(request));
-
-      // Utilize the response body
-      print(response.body); // Debugging purpose
+      final response = await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(request));
+      print(response.body);
     } catch (e) {
       throw Exception(e.toString());
     }
@@ -145,20 +118,16 @@ class UserService {
 
   static Future<Student> updateUserPoints(Student user) async {
     try {
-      Map<String, dynamic> request = {
-        "points": user.points,
-      };
-      final response =
-          await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-              headers: {
-                'Content-type': 'application/json; charset=utf-8',
-                'Accept': 'application/json',
-              },
-              body: jsonEncode(request));
+      Map<String, dynamic> request = {"points": user.points};
+      final response = await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(request));
 
-      final body = response.body;
-      final result = jsonDecode(body);
-      Student users = Student.fromJson(result['user']);
+      final result = jsonDecode(response.body);
+      Student users = Student.fromJson(result['user'] ?? result['data'] ?? result);
       return users;
     } catch (e) {
       throw Exception(e.toString());
@@ -167,20 +136,16 @@ class UserService {
 
   static Future<Student> updateUserPointsAndBadge(Student user) async {
     try {
-      Map<String, dynamic> request = {
-        "points": user.points,
-      };
-      final response =
-          await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-              headers: {
-                'Content-type': 'application/json; charset=utf-8',
-                'Accept': 'application/json',
-              },
-              body: jsonEncode(request));
+      Map<String, dynamic> request = {"points": user.points};
+      final response = await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(request));
 
-      final body = response.body;
-      final result = jsonDecode(body);
-      Student users = Student.fromJson(result['user']);
+      final result = jsonDecode(response.body);
+      Student users = Student.fromJson(result['user'] ?? result['data'] ?? result);
       return users;
     } catch (e) {
       throw Exception(e.toString());
@@ -189,21 +154,70 @@ class UserService {
 
   static Future<void> updateUserPhoto(Student user) async {
     try {
-      Map<String, dynamic> request = {
-        "image": user.image,
-      };
-      final response =
-          await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-              headers: {
-                'Content-type': 'application/json; charset=utf-8',
-                'Accept': 'application/json',
-              },
-              body: jsonEncode(request));
-
-      final body = response.body;
-      // print(body);
+      Map<String, dynamic> request = {"image": user.image};
+      await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(request));
     } catch (e) {
       throw Exception(e.toString());
+    }
+  }
+
+  // ==========================================================
+  // FUNGSI BARU UNTUK SINKRONISASI DATABASE (PENYEBAB ERROR BELI AVATAR)
+  // ==========================================================
+
+  // 1. Simpan pembelian avatar baru ke tabel database backend
+static Future<bool> savePurchasedAvatarToDb(int userId, int avatarId) async {
+    try {
+      // PERBAIKAN: Gunakan /user/purchase-avatar agar sesuai dengan UserRouter.js
+      final url = Uri.parse('${GlobalVar.baseUrl}/user/purchase-avatar');
+      
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        // PERBAIKAN: Gunakan snake_case sesuai req.body di UserController.js
+        body: jsonEncode({
+          'user_id': userId,
+          'avatar_id': avatarId,
+        }),
+      );
+
+      print('DEBUG PURCHASE STATUS: ${response.statusCode}');
+      print('DEBUG PURCHASE BODY: ${response.body}');
+
+      return (response.statusCode == 200 || response.statusCode == 201);
+    } catch (e) {
+      print('Error savePurchasedAvatarToDb: $e');
+      return false;
+    }
+  }  
+  
+  // 2. Ambil daftar avatar yang sudah dimiliki user dari database
+ static Future<List<int>> getPurchasedAvatarsFromDb(int userId) async {
+    try {
+      // PERBAIKAN: Sesuaikan endpoint dengan router backend
+      final response = await http.get(
+        Uri.parse('${GlobalVar.baseUrl}/user/$userId/avatars'),
+        headers: {'Accept': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        // Mapping data dari format {"data": [{"avatar_id": 1}, ...]}
+        List<dynamic> data = result['data'] ?? []; 
+        return data.map((item) => int.parse(item['avatar_id'].toString())).toList();
+      }
+      return [1];
+    } catch (e) {
+      print('Error getPurchasedAvatarsFromDb: $e');
+      return [1];
     }
   }
 }

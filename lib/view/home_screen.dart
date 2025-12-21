@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:app/model/user.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
-import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/course.dart';
@@ -13,7 +12,7 @@ import '../service/user_service.dart';
 import '../utils/colors.dart';
 import 'login_screen.dart';
 
-// IMPORT KOMPONEN DARI FOLDER GAMIFICATION
+// IMPORT KOMPONEN GAMIFICATION
 import 'package:app/view/gamification/badge_stat.dart';
 import 'package:app/view/gamification/course_stat.dart';
 import 'package:app/view/gamification/rank_stat.dart';
@@ -48,39 +47,61 @@ class _HomeState extends State<Homescreen> {
     super.initState();
     getUserFromSharedPreference().then((_) {
       getAllUser();
-      updateStreak();
+      // Sinkronisasi tampilan streak awal dari data user
+      if (user != null) {
+        setState(() => streakDays = user!.streak);
+      }
     });
     getEnrolledCourse();
   }
 
-  // Logika Streak harian
-  Future<void> updateStreak() async {
+  // --- LOGIKA STREAK TERBARU (SINKRON DB) ---
+  Future<void> handleStreakInteraction() async {
+    if (user == null) return;
+
     pref = await SharedPreferences.getInstance();
-    final String? lastLoginDateString = pref.getString('lastLoginDate');
     final DateTime now = DateTime.now();
     final DateTime today = DateTime(now.year, now.month, now.day);
+    
+    int currentStreak = user!.streak;
+    DateTime? lastInteractionDate = user!.lastInteraction;
 
-    if (lastLoginDateString == null) {
-      await pref.setString('lastLoginDate', today.toIso8601String());
-      await pref.setInt('streakDays', 1);
-      setState(() => streakDays = 1);
-      return;
+    if (lastInteractionDate != null) {
+      DateTime lastDate = DateTime(
+          lastInteractionDate.year, 
+          lastInteractionDate.month, 
+          lastInteractionDate.day
+      );
+      final int difference = today.difference(lastDate).inDays;
+
+      if (difference == 0) {
+        // Sudah interaksi hari ini
+        return; 
+      } else if (difference == 1) {
+        // Hari baru berurutan
+        currentStreak++;
+      } else {
+        // Bolos > 1 hari, reset
+        currentStreak = 1;
+      }
+    } else {
+      // Interaksi pertama
+      currentStreak = 1;
     }
 
-    final DateTime lastLoginDate = DateTime.parse(lastLoginDateString);
-    final Duration difference = today.difference(lastLoginDate);
+    // Update UI & Object
+    setState(() {
+      streakDays = currentStreak;
+      user!.streak = currentStreak;
+      user!.lastInteraction = now;
+    });
 
-    if (difference.inDays == 0) {
-      setState(() => streakDays = pref.getInt('streakDays') ?? 0);
-    } else if (difference.inDays == 1) {
-      final currentStreak = (pref.getInt('streakDays') ?? 0) + 1;
-      await pref.setInt('streakDays', currentStreak);
-      await pref.setString('lastLoginDate', today.toIso8601String());
-      setState(() => streakDays = currentStreak);
-    } else {
-      await pref.setInt('streakDays', 1);
-      await pref.setString('lastLoginDate', today.toIso8601String());
-      setState(() => streakDays = 1);
+    // Simpan ke DB
+    try {
+      await UserService.updateUser(user!);
+      debugPrint("Streak synced to database: $currentStreak");
+    } catch (e) {
+      debugPrint("Database sync failed: $e");
     }
   }
 
@@ -92,16 +113,13 @@ class _HomeState extends State<Homescreen> {
         final result = await CourseService.getEnrolledCourse(id).timeout(const Duration(seconds: 10));
         final fetchedUser = await UserService.getUserById(id).timeout(const Duration(seconds: 10));
         
-        // Simpan data ke state
         allCourses = result;
         user = fetchedUser;
 
-        // --- LOGIKA PERBAIKAN PROGRESS ---
         final lastId = pref.getInt('lastestSelectedCourse');
         Course? foundCourse;
 
         if (lastId != null) {
-          // Cari course yang ID-nya sesuai dengan yang tersimpan terakhir kali
           for (var c in allCourses) {
             if (c.id == lastId) {
               foundCourse = c;
@@ -110,15 +128,14 @@ class _HomeState extends State<Homescreen> {
           }
         }
 
-        // FALLBACK: Jika tidak ada ID tersimpan, otomatis ambil course pertama
         if (foundCourse == null && allCourses.isNotEmpty) {
           foundCourse = allCourses.first;
-          // Simpan ID ini secara permanen agar saat buka app lagi tidak null
           await pref.setInt('lastestSelectedCourse', foundCourse.id);
         }
 
         setState(() {
           lastestCourse = foundCourse;
+          streakDays = user?.streak ?? 0; // Sync streak dari data API
           isLoading = false;
         });
       } catch (e) {
@@ -171,10 +188,7 @@ class _HomeState extends State<Homescreen> {
 
   void logout() async {
     pref = await SharedPreferences.getInstance();
-    pref.remove('userId');
-    pref.remove('name');
-    pref.remove('role');
-    pref.remove('token');
+    pref.clear();
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
   }
 
@@ -200,22 +214,24 @@ class _HomeState extends State<Homescreen> {
             ),
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 50),
-                        _buildProfileHeader(),
-                        _buildStatsDashboard(),
-                        // My Progress Card
-                        ProgressCard(
-                          lastestCourse: lastestCourse,
-                          onTap: () => widget.updateIndex(2),
-                        ),
-                        _buildExploreSection(),
-                        // Leaderboard Section
-                        LeaderboardList(students: list),
-                        const SizedBox(height: 30),
-                      ],
+                : RefreshIndicator(
+                    onRefresh: getEnrolledCourse,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 50),
+                          _buildProfileHeader(),
+                          _buildStatsDashboard(),
+                          ProgressCard(
+                            lastestCourse: lastestCourse,
+                            onTap: () => widget.updateIndex(2),
+                          ),
+                          _buildExploreSection(),
+                          LeaderboardList(students: list),
+                          const SizedBox(height: 30),
+                        ],
+                      ),
                     ),
                   ),
           ),
@@ -267,14 +283,11 @@ class _HomeState extends State<Homescreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.start, 
+                mainAxisAlignment: MainAxisAlignment.spaceBetween, 
                 children: [
                   BadgeStat(count: userBadges?.length ?? 0),
-                  const SizedBox(width: 24),
                   CourseStat(count: allCourses.length),
-                  const SizedBox(width: 24),
                   RankStat(rank: rank, total: list.length),
-                  const SizedBox(width: 24),
                   StreakStat(days: streakDays),
                 ],
               ),
@@ -305,7 +318,9 @@ class _HomeState extends State<Homescreen> {
                   final course = allCourses[index];
                   return GestureDetector(
                     onTap: () async {
-                      // Simpan ID yang dipilih ke SharedPreferences
+                      // TRIGGER STREAK SAAT MEMBUKA COURSE
+                      await handleStreakInteraction(); 
+                      
                       await pref.setInt('lastestSelectedCourse', course.id);
                       setState(() {
                         lastestCourse = course;

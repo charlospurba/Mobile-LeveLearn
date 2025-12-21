@@ -7,7 +7,6 @@ import 'package:app/view/trade_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../model/user.dart';
 
 class TradeScreen extends StatefulWidget {
@@ -19,126 +18,118 @@ class TradeScreen extends StatefulWidget {
 }
 
 class _TradeScreenState extends State<TradeScreen> {
-
-  late SharedPreferences pref;
   List<TradeModel> trades = [];
   List<UserTrade> userTrade = [];
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    fetchTrades();
-
-    trades = trades;
+    fetchData();
   }
 
-  Future<void> fetchTrades() async {
-    await getAllTrades(); // Wait until all trades are fetched
-    await getUserTrade(); // Then fetch user-specific trades
-  }
-
-  Future<void> getAllTrades() async {
+  Future<void> fetchData() async {
     try {
-      final result = await TradeService.getAllTrades();
+      final allTrades = await TradeService.getAllTrades();
+      final ownedTrades = await TradeService.getUserTrade(widget.user.id);
+      
       if (!mounted) return;
 
       setState(() {
-        trades = result;
+        trades = allTrades;
+        userTrade = ownedTrades;
+        
+        final tradeIds = userTrade.map((t) => t.tradeId).toSet();
+        for (var t in trades) {
+          t.hasTrade = tradeIds.contains(t.id);
+        }
+        isLoading = false;
       });
     } catch (e) {
-      debugPrint("Error fetching trades: $e");
+      debugPrint("Error: $e");
+      setState(() => isLoading = false);
     }
   }
-
-  Future<void> getUserTrade() async {
-    final result = await TradeService.getUserTrade(widget.user.id);
-    setState(() {
-      userTrade = result;
-    });
-
-    if (trades.isNotEmpty && userTrade.isNotEmpty) {
-      final tradeIds = userTrade.map((trade) => trade.tradeId).toSet();
-
-      for (var trade in trades) {
-        trade.hasTrade = tradeIds.contains(trade.id);
-      }
-    }
-  }
-
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Trade"),
-        backgroundColor: AppColors.primaryColor,
-        leading: IconButton(
-            onPressed: (){
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => Mainscreen(navIndex : 4)),
-              );
-            },
-            icon: Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white,)),
-        titleTextStyle: TextStyle(
-            fontFamily: 'DIN_Next_Rounded',
-            fontSize: 24,
-            color: Colors.white
-        ),
-        iconTheme: IconThemeData(
-          color: Colors.white,
-        ),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage(
-                'lib/assets/pictures/background-pattern.png'
-            ),
-            fit: BoxFit.cover,
+    // Membagi list berdasarkan judul (Avatar vs Reward)
+    final avatarTrades = trades.where((t) => t.title.toLowerCase().contains('avatar')).toList();
+    final rewardTrades = trades.where((t) => !t.title.toLowerCase().contains('avatar')).toList();
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text("Trade Center"),
+          backgroundColor: AppColors.primaryColor,
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => Mainscreen(navIndex: 4))),
+            icon: const Icon(LineAwesomeIcons.angle_left_solid),
+          ),
+          bottom: const TabBar(
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            tabs: [
+              Tab(icon: Icon(Icons.face), text: "Avatars"),
+              Tab(icon: Icon(Icons.card_giftcard), text: "Rewards"),
+            ],
           ),
         ),
-        child: trades.isEmpty
-            ? Center(
-              child: Text('Penawaran belum tersedia',
-                  style: TextStyle(
-                      fontFamily: 'DIN_Next_Rounded',
-                      color: AppColors.primaryColor
-                  )
+        body: Container(
+          decoration: const BoxDecoration(
+            image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover),
+          ),
+          child: isLoading 
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+                children: [
+                  _buildTradeList(avatarTrades, true),
+                  _buildTradeList(rewardTrades, false),
+                ],
               ),
-            )
-            : ListView.builder(
-              itemCount: trades.length,
-              itemBuilder: (context, index) {
-                final trade = trades[index];
-                return ListTile(
-                  leading: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(trade.image)),
-                  title: Text(
-                      trade.title,
-                      style: TextStyle(
-                          fontFamily: 'DIN_Next_Rounded',
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primaryColor
-                      )),
-                  subtitle: Text(
-                    'Tukarkan badge ${trade.requiredBadgeType} anda untuk mendapatkan penawaran ini!',
-                    style: TextStyle(
-                      fontFamily: 'DIN_Next_Rounded',
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TradeDetailScreen(trade: trade, user: widget.user,),
-                      ),
-                    );
-                  },
-                );
-              },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTradeList(List<TradeModel> list, bool isAvatar) {
+    if (list.isEmpty) {
+      return const Center(child: Text("Belum ada penawaran tersedia", style: TextStyle(fontFamily: 'DIN_Next_Rounded')));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      itemCount: list.length,
+      itemBuilder: (context, index) {
+        final trade = list[index];
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(10),
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(trade.image, width: 60, height: 60, fit: BoxFit.cover, 
+                errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 60)),
             ),
-      )
+            title: Text(trade.title, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
+            subtitle: Text(
+              isAvatar ? "Tukarkan poin untuk koleksi ini" : "Butuh badge: ${trade.requiredBadgeType}",
+              style: const TextStyle(fontFamily: 'DIN_Next_Rounded'),
+            ),
+            trailing: trade.hasTrade 
+              ? const Icon(Icons.check_circle, color: Colors.green) 
+              : const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (context) => TradeDetailScreen(trade: trade, user: widget.user)));
+              fetchData(); // Refresh data saat kembali
+            },
+          ),
+        );
+      },
     );
   }
 }

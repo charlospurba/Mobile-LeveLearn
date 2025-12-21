@@ -1,5 +1,4 @@
 import 'dart:convert';
-
 import 'package:app/global_var.dart';
 import 'package:app/model/trade.dart';
 import 'package:app/model/user_trade.dart';
@@ -9,57 +8,51 @@ class TradeService {
   static Future<List<TradeModel>> getAllTrades() async {
     try {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/trade'));
-      final body = response.body;
-      final result = jsonDecode(body);
-      List<TradeModel> trades = List<TradeModel>.from(
-        result.map(
-            (result) => TradeModel.fromJson(result)
-        ),
-      );
-      return trades;
-    } catch(e) {
-      throw Exception(e.toString());
+      if (response.statusCode == 200) {
+        final List result = jsonDecode(response.body);
+        return result.map((json) => TradeModel.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      throw Exception("Gagal mengambil data trade: $e");
     }
   }
 
-  static Future<void> createUserTrade(int userId, int tradeId, int badgeId) async {
+  // Fungsi untuk mencatat transaksi ke database
+  static Future<bool> createUserTrade(int userId, int tradeId) async {
     try {
       Map<String, dynamic> request = {
         "userId": userId,
         "tradeId": tradeId
       };
-      final response = await http.post(Uri.parse('${GlobalVar.baseUrl}/usertrade'), headers: {
-        'Content-type' : 'application/json; charset=utf-8',
-        'Accept': 'application/json',
-      } , body: jsonEncode(request));
+      final response = await http.post(
+        Uri.parse('${GlobalVar.baseUrl}/usertrade'),
+        headers: {
+          'Content-type': 'application/json; charset=utf-8',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(request),
+      );
 
-      final body = response.body;
-      final result = jsonDecode(body);
-      print(result['message']);
-    } catch(e) {
-      throw Exception(e.toString());
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print("Error createUserTrade: $e");
+      return false;
     }
   }
 
-  static Future<List<UserTrade>> getUserTrade(int userId) async{
+  static Future<List<UserTrade>> getUserTrade(int userId) async {
     try {
-      List<UserTrade> filteredUserTrade = [];
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/usertrade'));
-      final body = response.body;
-      final result = jsonDecode(body);
-      List<UserTrade> trades = List<UserTrade>.from(
-        result.map(
-                (result) => UserTrade.fromJson(result)
-        ),
-      );
-      for(UserTrade ut in trades){
-        if(ut.userId == userId) {
-          filteredUserTrade.add(ut);
-        }
+      if (response.statusCode == 200) {
+        final List result = jsonDecode(response.body);
+        List<UserTrade> allUserTrades = result.map((json) => UserTrade.fromJson(json)).toList();
+        // Filter di sisi client sesuai userId
+        return allUserTrades.where((ut) => ut.userId == userId).toList();
       }
-      return filteredUserTrade;
-    } catch(e) {
-      throw Exception(e.toString());
+      return [];
+    } catch (e) {
+      throw Exception("Error fetching user trades: $e");
     }
   }
 }

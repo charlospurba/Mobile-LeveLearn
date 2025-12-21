@@ -116,6 +116,22 @@ flutter:
     - lib/assets/leaderboards/banner-gold-vertical.png
     - lib/assets/leaderboards/banner-silver.png
     - lib/assets/leaderboards/banner-silver-vertical.png
+    - lib/assets/pictures/ecourse.png
+    - lib/assets/pictures/cis.jpeg
+    - lib/assets/pictures/zimbra.png
+    - lib/assets/avatars/avatar1.jpeg
+    - lib/assets/avatars/avatar2.jpeg
+    - lib/assets/avatars/avatar3.jpeg
+    - lib/assets/avatars/avatar4.jpeg
+    - lib/assets/avatars/avatar5.jpeg
+    - lib/assets/avatars/avatar6.jpeg
+    - lib/assets/avatars/avatar7.jpeg
+    - lib/assets/avatars/avatar8.jpeg
+    - lib/assets/avatars/avatar9.jpeg
+    - lib/assets/avatars/avatar10.jpeg
+    - lib/assets/avatars/avatar11.jpeg
+    - lib/assets/avatars/avatar12.jpeg
+
   fonts:
     - family: DIN_Next_Rounded
       fonts:

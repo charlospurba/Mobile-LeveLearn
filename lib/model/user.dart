@@ -10,6 +10,10 @@ class Student {
   int? badges;
   String? instructorId;
   int? instructorCourses;
+
+  int streak; 
+  DateTime? lastInteraction;
+
   String? image;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -25,6 +29,8 @@ class Student {
     this.points,
     this.totalCourses,
     this.badges,
+    this.streak = 0,
+    this.lastInteraction,
     this.instructorId,
     this.instructorCourses,
     this.image,
@@ -43,8 +49,10 @@ class Student {
       points: json['points'],
       totalCourses: json['totalCourses'],
       badges: json['badges'],
-      instructorId: json['instructorId'],
-      instructorCourses: json['instructorCourses'],
+      streak: json['streak'] ?? 0,
+      lastInteraction: json['lastInteraction'] != null 
+          ? DateTime.parse(json['lastInteraction']) 
+          : null,
       image: json['image'],
       createdAt: DateTime.parse(json['createdAt']),
       updatedAt: DateTime.parse(json['updatedAt']),
