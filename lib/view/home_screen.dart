@@ -53,47 +53,64 @@ class _HomeState extends State<Homescreen> {
   }
 
   // --- LOGIKA STREAK BARU (SINKRON DATABASE) ---
-  Future<void> handleStreakInteraction() async {
-    if (user == null) return;
+Future<void> handleStreakInteraction() async {
+  if (user == null) return;
 
-    pref = await SharedPreferences.getInstance();
-    final DateTime now = DateTime.now();
-    final DateTime today = DateTime(now.year, now.month, now.day);
+  final DateTime now = DateTime.now();
+  // KUNCI: Buat waktu hari ini di jam 00:00:00 agar perbandingan hari akurat
+  final DateTime todayNormalized = DateTime(now.year, now.month, now.day);
+  
+  int currentStreak = user!.streak;
+  DateTime? lastInteractionDate = user!.lastInteraction;
+
+  if (lastInteractionDate != null) {
+    // KUNCI: Buat waktu interaksi terakhir di jam 00:00:00
+    DateTime lastDateNormalized = DateTime(
+        lastInteractionDate.year, 
+        lastInteractionDate.month, 
+        lastInteractionDate.day
+    );
     
-    int currentStreak = user!.streak;
-    DateTime? lastInteractionDate = user!.lastInteraction;
+    // Hitung selisih hari murni
+    final int difference = todayNormalized.difference(lastDateNormalized).inDays;
 
-    if (lastInteractionDate != null) {
-      DateTime lastDate = DateTime(
-          lastInteractionDate.year, 
-          lastInteractionDate.month, 
-          lastInteractionDate.day
-      );
-      final int difference = today.difference(lastDate).inDays;
-
-      if (difference == 0) {
-        return; 
-      } else if (difference == 1) {
-        currentStreak++;
-      } else {
-        currentStreak = 1;
-      }
+    if (difference == 0) {
+      // User sudah interaksi hari ini, jangan lakukan apa-apa
+      debugPrint("Streak: Sudah interaksi hari ini.");
+      return; 
+    } else if (difference == 1) {
+      // Besoknya baru buka lagi (Streak bertambah)
+      currentStreak++;
+      debugPrint("Streak bertambah!");
     } else {
+      // Terlewat lebih dari satu hari (Streak reset ke 1)
       currentStreak = 1;
+      debugPrint("Streak reset ke 1.");
     }
-
-    setState(() {
-      streakDays = currentStreak;
-      user!.streak = currentStreak;
-      user!.lastInteraction = now;
-    });
-
-    try {
-      await UserService.updateUser(user!); 
-    } catch (e) {
-      debugPrint("Failed to sync streak: $e");
-    }
+  } else {
+    // Interaksi pertama kali seumur hidup
+    currentStreak = 1;
   }
+
+  // Update objek user secara lokal sementara
+  user!.streak = currentStreak;
+  user!.lastInteraction = now;
+
+  try {
+    // SINKRONISASI KE DATABASE MELALUI API
+    final updatedUser = await UserService.updateUser(user!); 
+    
+    // Update State UI dengan data hasil kembalian server
+    setState(() {
+      user = updatedUser;
+      streakDays = updatedUser.streak;
+    });
+    
+    debugPrint("Streak Berhasil Disinkron: ${updatedUser.streak}");
+  } catch (e) {
+    debugPrint("Gagal sinkron streak: $e");
+  }
+}
 
   Future<void> getEnrolledCourse() async {
     pref = await SharedPreferences.getInstance();

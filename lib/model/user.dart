@@ -18,8 +18,7 @@ class Student {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-
-  Student ({
+  Student({
     required this.id,
     required this.username,
     required this.password,
@@ -41,21 +40,27 @@ class Student {
   factory Student.fromJson(Map<String, dynamic> json) {
     return Student(
       id: json['id'],
-      username: json['username'],
-      password: json['password'],
-      name: json['name'],
-      role: json['role'],
+      username: json['username'] ?? '',
+      password: json['password'] ?? '',
+      name: json['name'] ?? '',
+      role: json['role'] ?? 'STUDENT',
       studentId: json['studentId'],
-      points: json['points'],
-      totalCourses: json['totalCourses'],
-      badges: json['badges'],
+      points: json['points'] ?? 0,
+      totalCourses: json['totalCourses'] ?? 0,
+      badges: json['badges'] ?? 0,
       streak: json['streak'] ?? 0,
       lastInteraction: json['lastInteraction'] != null 
           ? DateTime.parse(json['lastInteraction']) 
           : null,
       image: json['image'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
+      instructorId: json['instructorId'],
+      instructorCourses: json['instructorCourses'],
+      createdAt: json['createdAt'] != null 
+          ? DateTime.parse(json['createdAt']) 
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null 
+          ? DateTime.parse(json['updatedAt']) 
+          : DateTime.now(),
     );
   }
 }
