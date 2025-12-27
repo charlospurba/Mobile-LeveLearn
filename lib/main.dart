@@ -17,8 +17,8 @@ void main() async {
   // final bool isLoggedIn = true;
 
   await Supabase.initialize(
-      url: "https://kfxaanhuccwjokmkdtho.supabase.co",
-      anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtmeGFhbmh1Y2N3am9rbWtkdGhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAwNDE1MDEsImV4cCI6MjA1NTYxNzUwMX0.icFBLGnPC8eqbxnGuovKNnJ5Frvm_SnFrPDsoFlfNEA"
+      url: "https://hfuwatcoqcitqykvrtbp.supabase.co",
+      anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmdXdhdGNvcWNpdHF5a3ZydGJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyNDYyODEsImV4cCI6MjA4MTgyMjI4MX0.JGgZorny4tj7Zo5G7KfuA30dwpX3F5iL3tvLeJIeW4c"
   );
   runApp(MyApp(isLoggedIn: isLoggedIn, isFirstLaunch: isFirstLaunch));
 }

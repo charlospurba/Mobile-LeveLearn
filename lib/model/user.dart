@@ -45,10 +45,10 @@ class Student {
       name: json['name'] ?? '',
       role: json['role'] ?? 'STUDENT',
       studentId: json['studentId'],
-      points: json['points'] ?? 0,
+      points: json['points'] != null ? int.parse(json['points'].toString()) : 0,
       totalCourses: json['totalCourses'] ?? 0,
       badges: json['badges'] ?? 0,
-      streak: json['streak'] ?? 0,
+      streak: json['streak'] != null ? int.parse(json['streak'].toString()) : 0,
       lastInteraction: json['lastInteraction'] != null 
           ? DateTime.parse(json['lastInteraction']) 
           : null,

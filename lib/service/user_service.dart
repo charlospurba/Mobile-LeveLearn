@@ -3,20 +3,19 @@ import 'dart:convert';
 import 'package:app/model/login.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
-
-import '../global_var.dart';
+import '../model/user_challenge.dart'; 
 import '../model/user.dart';
+import '../global_var.dart';
 
 class UserService {
+  // --- FUNGSI AMBIL DATA USER ---
+  
   static Future<List<Student>> getAllUser() async {
     try {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user'));
-      final body = response.body;
-      final result = jsonDecode(body);
+      final result = jsonDecode(response.body);
       List<Student> users = List<Student>.from(
-        result.map(
-          (user) => Student.fromJson(user),
-        ),
+        result.map((user) => Student.fromJson(user)),
       );
       return users;
     } catch (e) {
@@ -27,8 +26,7 @@ class UserService {
   static Future<Student> getUserById(int id) async {
     try {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$id'));
-      final body = response.body;
-      final result = jsonDecode(body);
+      final result = jsonDecode(response.body);
       Student users = Student.fromJson(result);
       return users;
     } catch (e) {
@@ -36,11 +34,12 @@ class UserService {
     }
   }
 
+  // --- FUNGSI AUTHENTICATION ---
+
   static Future<Map<String, dynamic>> login(String username, String password) async {
     final uri = Uri.parse('${GlobalVar.baseUrl}/login');
     final request = {'username': username, 'password': password};
     try {
-      print('LOGIN -> POST $uri');
       final response = await http.post(uri,
           headers: {
             'Content-Type': 'application/json',
@@ -66,8 +65,9 @@ class UserService {
     }
   }
 
-  // --- PERBAIKAN: Memastikan mapping response sesuai dengan struktur 'user' dari backend ---
-static Future<Student> updateUser(Student user) async {
+  // --- FUNGSI UPDATE PROFIL & STREAK ---
+
+  static Future<Student> updateUser(Student user) async {
     try {
       Map<String, dynamic> request = {
         "name": user.name,
@@ -78,7 +78,6 @@ static Future<Student> updateUser(Student user) async {
         "totalCourses": user.totalCourses,
         "badges": user.badges,
         "image": user.image,
-        // --- TAMBAHKAN SINKRONISASI STREAK ---
         "streak": user.streak,
         "lastInteraction": user.lastInteraction?.toIso8601String(),
         "instructorId": user.instructorId,
@@ -93,68 +92,31 @@ static Future<Student> updateUser(Student user) async {
           body: jsonEncode(request));
 
       final result = jsonDecode(response.body);
-      Student updatedUser = Student.fromJson(result['user'] ?? result['data'] ?? result);
-      return updatedUser;
+      return Student.fromJson(result['user'] ?? result['data'] ?? result);
     } catch (e) {
       throw Exception(e.toString());
     }
   }
+
+  // BARU: Fungsi untuk mengirim data kustom ke backend (untuk trigger Challenge Akurat)
+  static Future<void> updateUserRaw(int userId, Map<String, dynamic> data) async {
+    try {
+      final response = await http.put(
+          Uri.parse('${GlobalVar.baseUrl}/user/$userId'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(data));
+      print('DEBUG UPDATE RAW: ${response.body}');
+    } catch (e) {
+      print('Error updateUserRaw: $e');
+    }
+  }
+
   static Future<void> updatePassword(Student user) async {
     try {
-      Map<String, dynamic> request = {
-        "password": user.password,
-      };
-      final response = await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-          headers: {
-            'Content-type': 'application/json; charset=utf-8',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(request));
-      print(response.body);
-    } catch (e) {
-      throw Exception(e.toString());
-    }
-  }
-
-  static Future<Student> updateUserPoints(Student user) async {
-    try {
-      Map<String, dynamic> request = {"points": user.points};
-      final response = await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-          headers: {
-            'Content-type': 'application/json; charset=utf-8',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(request));
-
-      final result = jsonDecode(response.body);
-      Student users = Student.fromJson(result['user'] ?? result['data'] ?? result);
-      return users;
-    } catch (e) {
-      throw Exception(e.toString());
-    }
-  }
-
-  static Future<Student> updateUserPointsAndBadge(Student user) async {
-    try {
-      Map<String, dynamic> request = {"points": user.points};
-      final response = await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-          headers: {
-            'Content-type': 'application/json; charset=utf-8',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(request));
-
-      final result = jsonDecode(response.body);
-      Student users = Student.fromJson(result['user'] ?? result['data'] ?? result);
-      return users;
-    } catch (e) {
-      throw Exception(e.toString());
-    }
-  }
-
-  static Future<void> updateUserPhoto(Student user) async {
-    try {
-      Map<String, dynamic> request = {"image": user.image};
+      Map<String, dynamic> request = {"password": user.password};
       await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
           headers: {
             'Content-type': 'application/json; charset=utf-8',
@@ -166,43 +128,135 @@ static Future<Student> updateUser(Student user) async {
     }
   }
 
-  // ==========================================================
-  // FUNGSI BARU UNTUK SINKRONISASI DATABASE (PENYEBAB ERROR BELI AVATAR)
-  // ==========================================================
+  // --- FUNGSI UPDATE POIN ---
 
-  // 1. Simpan pembelian avatar baru ke tabel database backend
-static Future<bool> savePurchasedAvatarToDb(int userId, int avatarId) async {
+  static Future<Student> updateUserPoints(Student user) async {
     try {
-      // PERBAIKAN: Gunakan /user/purchase-avatar agar sesuai dengan UserRouter.js
-      final url = Uri.parse('${GlobalVar.baseUrl}/user/purchase-avatar');
-      
+      Map<String, dynamic> request = {"points": user.points};
+      final response = await http.put(
+          Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(request));
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        final userData = result['user'] ?? result['data'] ?? result;
+        return Student.fromJson(userData);
+      } else {
+        throw Exception("Server Error: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception(e.toString());
+    }
+  }
+
+  static Future<Student> updateUserPointsAndBadge(Student user) async {
+    try {
+      Map<String, dynamic> request = {
+        "points": user.points,
+        "badges": user.badges,
+      };
+      final response = await http.put(
+          Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          headers: {
+            'Content-type': 'application/json; charset=utf-8',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(request));
+
+      final result = jsonDecode(response.body);
+      return Student.fromJson(result['user'] ?? result['data'] ?? result);
+    } catch (e) {
+      throw Exception(e.toString());
+    }
+  }
+
+  // --- FUNGSI CHALLENGE TRIGGER ---
+
+  static Future<void> triggerChallengeManual(int userId, String type) async {
+    try {
       final response = await http.post(
-        url,
+        Uri.parse('${GlobalVar.baseUrl}/user/trigger-challenge'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        // PERBAIKAN: Gunakan snake_case sesuai req.body di UserController.js
+        body: jsonEncode({
+          'userId': userId,
+          'type': type,
+        }),
+      );
+      print('DEBUG TRIGGER CHALLENGE: ${response.body}');
+    } catch (e) {
+      print('Error triggerChallengeManual: $e');
+    }
+  }
+
+  static Future<void> triggerChallenge(int userId, String type) async {
+    return triggerChallengeManual(userId, type);
+  }
+
+  // --- FUNGSI DATA CHALLENGE & REWARD ---
+
+  static Future<List<UserChallenge>> getUserChallenges(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${GlobalVar.baseUrl}/user/$userId/challenges'),
+        headers: {'Accept': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> result = jsonDecode(response.body);
+        return result.map((json) => UserChallenge.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<bool> claimChallengeReward(int userId, int userChallengeId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${GlobalVar.baseUrl}/user/claim-challenge'),
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+          'userChallengeId': userChallengeId,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // --- FUNGSI SHOP & AVATAR ---
+
+  static Future<bool> savePurchasedAvatarToDb(int userId, int avatarId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${GlobalVar.baseUrl}/user/purchase-avatar'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: jsonEncode({
           'user_id': userId,
           'avatar_id': avatarId,
         }),
       );
-
-      print('DEBUG PURCHASE STATUS: ${response.statusCode}');
-      print('DEBUG PURCHASE BODY: ${response.body}');
-
       return (response.statusCode == 200 || response.statusCode == 201);
     } catch (e) {
-      print('Error savePurchasedAvatarToDb: $e');
       return false;
     }
-  }  
-  
-  // 2. Ambil daftar avatar yang sudah dimiliki user dari database
- static Future<List<int>> getPurchasedAvatarsFromDb(int userId) async {
+  }
+
+  static Future<List<int>> getPurchasedAvatarsFromDb(int userId) async {
     try {
-      // PERBAIKAN: Sesuaikan endpoint dengan router backend
       final response = await http.get(
         Uri.parse('${GlobalVar.baseUrl}/user/$userId/avatars'),
         headers: {'Accept': 'application/json'},
@@ -210,13 +264,11 @@ static Future<bool> savePurchasedAvatarToDb(int userId, int avatarId) async {
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        // Mapping data dari format {"data": [{"avatar_id": 1}, ...]}
         List<dynamic> data = result['data'] ?? []; 
         return data.map((item) => int.parse(item['avatar_id'].toString())).toList();
       }
       return [1];
     } catch (e) {
-      print('Error getPurchasedAvatarsFromDb: $e');
       return [1];
     }
   }

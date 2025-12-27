@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:app/model/user.dart';
+import 'package:app/model/user_challenge.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:line_awesome_flutter/line_awesome_flutter.dart';
@@ -13,7 +14,7 @@ import '../service/user_service.dart';
 import '../utils/colors.dart';
 import 'login_screen.dart';
 
-// IMPORT KOMPONEN DARI FOLDER GAMIFICATION
+// IMPORT KOMPONEN GAMIFIKASI
 import 'package:app/view/gamification/badge_stat.dart';
 import 'package:app/view/gamification/course_stat.dart';
 import 'package:app/view/gamification/rank_stat.dart';
@@ -21,6 +22,7 @@ import 'package:app/view/gamification/streak_stat.dart';
 import 'package:app/view/gamification/total_points.dart';
 import 'package:app/view/gamification/progress_card.dart';
 import 'package:app/view/gamification/leaderboard_list.dart';
+import 'package:app/view/gamification/challenge.dart';
 
 class Homescreen extends StatefulWidget {
   final Function(int) updateIndex;
@@ -33,6 +35,7 @@ class Homescreen extends StatefulWidget {
 class _HomeState extends State<Homescreen> {
   List<Course> allCourses = [];
   List<Student> list = [];
+  List<UserChallenge> myChallenges = [];
   String name = '';
   late SharedPreferences pref;
   Student? user;
@@ -46,128 +49,121 @@ class _HomeState extends State<Homescreen> {
   @override
   void initState() {
     super.initState();
-    getUserFromSharedPreference().then((_) {
-      getAllUser();
-    });
-    getEnrolledCourse();
+    _initialLoad(); // Memanggil pemuatan data awal dan pengecekan streak
   }
 
-  // --- LOGIKA STREAK BARU (SINKRON DATABASE) ---
-Future<void> handleStreakInteraction() async {
-  if (user == null) return;
+  // Fungsi muat data awal dan sinkronisasi streak otomatis
+  Future<void> _initialLoad() async {
+    if (!mounted) return;
+    setState(() => isLoading = true);
 
-  final DateTime now = DateTime.now();
-  // KUNCI: Buat waktu hari ini di jam 00:00:00 agar perbandingan hari akurat
-  final DateTime todayNormalized = DateTime(now.year, now.month, now.day);
-  
-  int currentStreak = user!.streak;
-  DateTime? lastInteractionDate = user!.lastInteraction;
-
-  if (lastInteractionDate != null) {
-    // KUNCI: Buat waktu interaksi terakhir di jam 00:00:00
-    DateTime lastDateNormalized = DateTime(
-        lastInteractionDate.year, 
-        lastInteractionDate.month, 
-        lastInteractionDate.day
-    );
+    await getUserFromSharedPreference();
     
-    // Hitung selisih hari murni
-    final int difference = todayNormalized.difference(lastDateNormalized).inDays;
-
-    if (difference == 0) {
-      // User sudah interaksi hari ini, jangan lakukan apa-apa
-      debugPrint("Streak: Sudah interaksi hari ini.");
-      return; 
-    } else if (difference == 1) {
-      // Besoknya baru buka lagi (Streak bertambah)
-      currentStreak++;
-      debugPrint("Streak bertambah!");
-    } else {
-      // Terlewat lebih dari satu hari (Streak reset ke 1)
-      currentStreak = 1;
-      debugPrint("Streak reset ke 1.");
+    if (idUser != 0) {
+      // 1. Jalankan pengecekan streak saat aplikasi dibuka
+      await handleStreakInteraction(); 
+      
+      // 2. Muat data pendukung secara paralel
+      await Future.wait([
+        getAllUser(),
+        getEnrolledCourse(),
+        fetchChallenges(),
+      ]);
     }
-  } else {
-    // Interaksi pertama kali seumur hidup
-    currentStreak = 1;
+    
+    if (mounted) setState(() => isLoading = false);
   }
 
-  // Update objek user secara lokal sementara
-  user!.streak = currentStreak;
-  user!.lastInteraction = now;
-
-  try {
-    // SINKRONISASI KE DATABASE MELALUI API
-    final updatedUser = await UserService.updateUser(user!); 
-    
-    // Update State UI dengan data hasil kembalian server
-    setState(() {
-      user = updatedUser;
-      streakDays = updatedUser.streak;
-    });
-    
-    debugPrint("Streak Berhasil Disinkron: ${updatedUser.streak}");
-  } catch (e) {
-    debugPrint("Gagal sinkron streak: $e");
+  // Mengambil data tantangan dari backend
+  Future<void> fetchChallenges() async {
+    if (idUser == 0) return;
+    try {
+      final result = await UserService.getUserChallenges(idUser);
+      if (mounted) {
+        setState(() {
+          myChallenges = result;
+        });
+      }
+    } catch (e) {
+      debugPrint("Gagal load challenges: $e");
+    }
   }
-}
+
+  // Logika pemicu streak dan sinkronisasi ke database
+  Future<void> handleStreakInteraction() async {
+    if (idUser == 0) return;
+
+    try {
+      // Mengambil data user terbaru dari server
+      final currentUser = await UserService.getUserById(idUser);
+      
+      // Mengirimkan data user ke backend untuk divalidasi tanggal interaksinya
+      // Backend akan menaikkan streak jika ini adalah hari baru yang berurutan
+      final updatedUser = await UserService.updateUser(currentUser); 
+      
+      if (mounted) {
+        setState(() {
+          user = updatedUser;
+          streakDays = updatedUser.streak;
+        });
+      }
+      debugPrint("Streak Disinkronkan: ${updatedUser.streak}");
+    } catch (e) {
+      debugPrint("Gagal sinkron streak: $e");
+    }
+  }
 
   Future<void> getEnrolledCourse() async {
-    pref = await SharedPreferences.getInstance();
-    int? id = pref.getInt('userId');
-    if (id != null) {
-      try {
-        final result = await CourseService.getEnrolledCourse(id).timeout(const Duration(seconds: 10));
-        final fetchedUser = await UserService.getUserById(id).timeout(const Duration(seconds: 10));
-        
-        allCourses = result;
-        user = fetchedUser;
+    if (idUser == 0) return;
+    try {
+      final result = await CourseService.getEnrolledCourse(idUser).timeout(const Duration(seconds: 10));
+      
+      allCourses = result;
 
-        final lastId = pref.getInt('lastestSelectedCourse');
-        Course? foundCourse;
+      final lastId = pref.getInt('lastestSelectedCourse');
+      Course? foundCourse;
 
-        if (lastId != null) {
-          for (var c in allCourses) {
-            if (c.id == lastId) {
-              foundCourse = c;
-              break;
-            }
+      if (lastId != null) {
+        for (var c in allCourses) {
+          if (c.id == lastId) {
+            foundCourse = c;
+            break;
           }
         }
+      }
 
-        if (foundCourse == null && allCourses.isNotEmpty) {
-          foundCourse = allCourses.first;
-          await pref.setInt('lastestSelectedCourse', foundCourse.id);
-        }
+      if (foundCourse == null && allCourses.isNotEmpty) {
+        foundCourse = allCourses.first;
+        await pref.setInt('lastestSelectedCourse', foundCourse.id);
+      }
 
-        // Ambil badge untuk mengupdate statistik Badges
-        final badgeResult = await BadgeService.getUserBadgeListByUserId(id);
+      final badgeResult = await BadgeService.getUserBadgeListByUserId(idUser);
 
+      if (mounted) {
         setState(() {
           lastestCourse = foundCourse;
-          streakDays = user?.streak ?? 0;
-          // FILTER: Hanya ambil badge yang belum ditukarkan
           userBadges = badgeResult.where((b) => !b.isPurchased).toList();
-          isLoading = false;
         });
-      } catch (e) {
-        setState(() => isLoading = false);
       }
+    } catch (e) {
+      debugPrint("Error enrolled course: $e");
     }
   }
 
-  void getAllUser() async {
+  Future<void> getAllUser() async {
     try {
       final result = await UserService.getAllUser().timeout(const Duration(seconds: 10));
-      setState(() {
-        list = result.where((u) => u.role == 'STUDENT').toList();
-        list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
-      });
+      if (mounted) {
+        setState(() {
+          list = result.where((u) => u.role == 'STUDENT').toList();
+          list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
+        });
+      }
 
       if (idUser == 0) return;
       for (int i = 0; i < list.length; i++) {
         if (list[i].id == idUser) {
-          setState(() => rank = i + 1);
+          if (mounted) setState(() => rank = i + 1);
           break;
         }
       }
@@ -177,36 +173,29 @@ Future<void> handleStreakInteraction() async {
   }
 
   Future<void> getUserFromSharedPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    final storedIdUser = prefs.getInt('userId');
+    pref = await SharedPreferences.getInstance();
+    final storedIdUser = pref.getInt('userId');
     if (storedIdUser != null) {
-      final fetchedUser = await UserService.getUserById(storedIdUser);
-      setState(() {
-        idUser = storedIdUser;
-        name = prefs.getString('name') ?? '';
-        user = fetchedUser;
-      });
-      getUserBadges(storedIdUser);
+      idUser = storedIdUser;
+      name = pref.getString('name') ?? '';
+      final fetchedUser = await UserService.getUserById(idUser);
+      if (mounted) {
+        setState(() {
+          user = fetchedUser;
+          streakDays = fetchedUser.streak;
+        });
+      }
     } else {
       logout();
     }
   }
 
-  Future<void> getUserBadges(int userId) async {
-    final result = await BadgeService.getUserBadgeListByUserId(userId);
-    setState(() {
-      // FILTER: Badge stat di home harus sinkron dengan profile
-      userBadges = result.where((b) => !b.isPurchased).toList();
-    });
-  }
-
   void logout() async {
     pref = await SharedPreferences.getInstance();
-    pref.remove('userId');
-    pref.remove('name');
-    pref.remove('role');
-    pref.remove('token');
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+    pref.clear(); 
+    if (mounted) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+    }
   }
 
   @override
@@ -231,20 +220,35 @@ Future<void> handleStreakInteraction() async {
             ),
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 50),
-                        _buildProfileHeader(),
-                        _buildStatsDashboard(),
-                        ProgressCard(
-                          lastestCourse: lastestCourse,
-                          onTap: () => widget.updateIndex(2),
-                        ),
-                        _buildExploreSection(),
-                        LeaderboardList(students: list),
-                        const SizedBox(height: 30),
-                      ],
+                : RefreshIndicator(
+                    onRefresh: _initialLoad, // Swipe refresh akan memicu hitung ulang streak
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 50),
+                          _buildProfileHeader(),
+                          _buildStatsDashboard(),
+                          
+                          ChallengeWidget(
+                            challenges: myChallenges,
+                            userId: idUser,
+                            onTabChange: (index) => widget.updateIndex(index),
+                            onRefresh: () {
+                              fetchChallenges(); // Refresh kartu setelah klaim hadiah
+                              getUserFromSharedPreference(); // Sinkronisasi poin di UI
+                            },
+                          ),
+
+                          ProgressCard(
+                            lastestCourse: lastestCourse,
+                            onTap: () => widget.updateIndex(2),
+                          ),
+                          _buildExploreSection(),
+                          LeaderboardList(students: list),
+                          const SizedBox(height: 30),
+                        ],
+                      ),
                     ),
                   ),
           ),
@@ -298,14 +302,13 @@ Future<void> handleStreakInteraction() async {
               Row(
                 mainAxisAlignment: MainAxisAlignment.start, 
                 children: [
-                  // Gunakan userBadges.length hasil filter agar sinkron
                   BadgeStat(count: userBadges?.length ?? 0),
                   const SizedBox(width: 24),
                   CourseStat(count: allCourses.length),
                   const SizedBox(width: 24),
                   RankStat(rank: rank, total: list.length),
                   const SizedBox(width: 24),
-                  StreakStat(days: streakDays),
+                  StreakStat(days: streakDays), // Menampilkan hari streak secara real-time
                 ],
               ),
               const SizedBox(height: 25),
@@ -334,12 +337,13 @@ Future<void> handleStreakInteraction() async {
                 itemBuilder: (context, index, realIndex) {
                   final course = allCourses[index];
                   return GestureDetector(
-                    onTap: () async {
-                      await handleStreakInteraction();
-                      await pref.setInt('lastestSelectedCourse', course.id);
-                      setState(() {
-                        lastestCourse = course;
-                      });
+                    onTap: () {
+                      pref.setInt('lastestSelectedCourse', course.id);
+                      if (mounted) {
+                        setState(() {
+                          lastestCourse = course;
+                        });
+                      }
                       widget.updateIndex(2);
                     },
                     child: Container(

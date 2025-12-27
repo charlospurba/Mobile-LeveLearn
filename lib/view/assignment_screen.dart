@@ -1,15 +1,13 @@
-import 'package:app/model/user.dart';
-import 'package:app/model/user_course.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:app/model/assignment.dart';
 import 'package:app/model/chapter_status.dart';
-import 'package:app/model/learning_material.dart';
 import 'package:app/model/user_course.dart';
 import 'package:app/service/badge_service.dart';
 import 'package:app/service/chapter_service.dart';
 import 'package:app/service/user_chapter_service.dart';
 import 'package:app/service/user_service.dart';
+import 'package:app/service/user_course_service.dart';
 import 'package:app/utils/colors.dart';
 import 'package:app/view/main_screen.dart';
 import 'package:dotted_border/dotted_border.dart';
@@ -22,15 +20,7 @@ import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../model/assignment.dart';
-import '../model/chapter_status.dart';
-import '../model/learning_material.dart';
-import '../service/badge_service.dart';
-import '../service/chapter_service.dart';
-import '../service/user_chapter_service.dart';
-import '../service/user_course_service.dart';
-import '../service/user_service.dart';
-import '../utils/colors.dart';
+import '../model/user.dart';
 import 'congratulation_screen.dart';
 
 class AssignmentScreen extends StatefulWidget {
@@ -42,6 +32,7 @@ class AssignmentScreen extends StatefulWidget {
   final int chLength;
   final Function(bool) updateProgress;
   final Function(ChapterStatus) updateStatus;
+
   const AssignmentScreen({
     super.key,
     required this.status,
@@ -51,7 +42,7 @@ class AssignmentScreen extends StatefulWidget {
     this.idBadge = 0,
     required this.chLength,
     required this.updateProgress,
-    required this.updateStatus
+    required this.updateStatus,
   });
 
   @override
@@ -66,9 +57,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
   double downloadProgress = 0.0;
   PlatformFile? file;
   String lastestSubmissionUrl = '';
-  bool _isFileUploaded = true;
-  bool _isUserBadgeUpdated = true;
-  bool _isUserCourseUpdated = true;
+  bool _isSubmitting = false; // State untuk mengontrol loading
   int idBadge = 0;
   int chLength = 0;
   bool complete = false;
@@ -76,7 +65,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
 
   @override
   void initState() {
-    getAssignment(widget.status.chapterId);
     status = widget.status;
     user = widget.user;
     uc = widget.uc;
@@ -87,414 +75,237 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     if (status.submission != null && status.submission != '') {
       lastestSubmissionUrl = status.submission!;
     }
+    getAssignment(widget.status.chapterId);
     super.initState();
   }
 
   void getAssignment(int id) async {
-    final resultAssignment = await ChapterService.getAssignmentByChapterId(id);
-    setState(() {
-      assignment = resultAssignment;
-    });
+    try {
+      final resultAssignment = await ChapterService.getAssignmentByChapterId(id);
+      if (mounted) setState(() => assignment = resultAssignment);
+    } catch (e) {
+      debugPrint("Error get assignment: $e");
+    }
   }
 
-  Future<void> updateStatus() async {
-    status = await UserChapterService.updateChapterStatus(status.id, status);
-    setState(() {
-      if(file != null){
-        _isFileUploaded = true;
+  Future<void> _handleSubmit() async {
+    if (file == null) return;
+
+    setState(() => _isSubmitting = true); // Mulai animasi loading
+
+    try {
+      // 1. Logika Hitung Poin & Progress
+      Duration difference = status.timeStarted.difference(DateTime.now());
+      if (!status.assignmentDone && !complete) {
+        user?.points = (user?.points ?? 0) + _calculatePoint(difference.inMinutes.abs());
       }
-    });
+
+      if (widget.level == uc.currentChapter) {
+        uc.currentChapter++;
+        uc.progress = (((uc.currentChapter - 1) / chLength) * 100).toInt();
+      }
+
+      if (idBadge != 0) {
+        await BadgeService.createUserBadgeByChapterId(user!.id, idBadge);
+        user?.badges = (user?.badges ?? 0) + 1;
+      }
+
+      // 2. PROSES UPLOAD KE SUPABASE
+      final filename = '${file!.name.split('.').first}_${status.userId}_${status.chapterId}_${DateTime.now().millisecondsSinceEpoch}.${file!.extension}';
+      final path = 'uploads/$filename';
+      
+      // Mengambil bytes secara aman
+      Uint8List bytes;
+      if (kIsWeb) {
+        bytes = file!.bytes!;
+      } else {
+        bytes = await File(file!.path!).readAsBytes();
+      }
+
+      // Pastikan nama bucket 'assignment' (lowercase) sesuai Dashboard Supabase
+      await Supabase.instance.client.storage.from('assignment').uploadBinary(
+        path, 
+        bytes,
+        fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+      );
+      
+      final publicUrl = Supabase.instance.client.storage.from('assignment').getPublicUrl(path);
+      
+      // Update state lokal status
+      status.submission = publicUrl;
+      status.isCompleted = true;
+      status.assignmentDone = true;
+      status.timeFinished = DateTime.now();
+
+      // 3. Update Database Backend (Poin, Badge, Status Chapter)
+      await Future.wait([
+        UserService.updateUserPointsAndBadge(user!),
+        UserCourseService.updateUserCourse(uc.id, uc),
+        UserChapterService.updateChapterStatus(status.id, status),
+      ]);
+
+      // 4. Trigger Challenge (Misi COMPLETE_CHAPTER)
+      await UserService.triggerChallengeManual(user!.id, 'COMPLETE_CHAPTER');
+
+      if (mounted) {
+        widget.updateStatus(status); // Update ke Parent Screen
+        _showSuccessDialog();
+      }
+    } catch (e) {
+      debugPrint("Gagal Submit: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Gagal mengirim tugas: ${e.toString()}"), 
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      // PENTING: Loading harus berhenti baik sukses maupun gagal
+      if (mounted) {
+        setState(() => _isSubmitting = false); 
+      }
+    }
+  }
+
+  int _calculatePoint(int mnt) {
+    if (mnt <= 120) return 100;
+    if (mnt <= 240) return 80;
+    return 20;
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text("Berhasil!", textAlign: TextAlign.center, style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('lib/assets/pixels/check.png', height: 72),
+            const SizedBox(height: 16),
+            const Text("Tugas berhasil dikumpulkan dan tantangan telah diperbarui.", textAlign: TextAlign.center),
+          ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
+              onPressed: () {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const Mainscreen(navIndex: 2)),
+                  (route) => false,
+                );
+              },
+              child: const Text("Selesai", style: TextStyle(color: Colors.white)),
+            ),
+          )
+        ],
+      ),
+    );
   }
 
   void _openFile(String filePath) {
     OpenFilex.open(filePath);
   }
 
-  Future<void> updateUserPointsAndBadge() async {
-    await UserService.updateUserPointsAndBadge(user!);
-    setState(() {
-      _isUserBadgeUpdated = true;
-    });
-  }
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+          image: DecorationImage(
+              image: AssetImage('lib/assets/pictures/background-pattern.png'),
+              fit: BoxFit.cover)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            if (_isSubmitting) const LinearProgressIndicator(color: AppColors.primaryColor),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    assignment == null 
+                        ? const CircularProgressIndicator() 
+                        : HtmlWidget(assignment!.instruction, textStyle: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
+                    const SizedBox(height: 20),
+                    
+                    // Upload Area
+                    GestureDetector(
+                      onTap: _isSubmitting ? null : () async {
+                        final result = await FilePicker.platform.pickFiles(
+                          type: FileType.custom, 
+                          allowedExtensions: ['pdf', 'jpg', 'png', 'jpeg']
+                        );
+                        if (result != null) setState(() => file = result.files.first);
+                      },
+                      child: file == null ? _buildUploadBox() : _buildFilePreview(file!),
+                    ),
 
-  Future<void> updateUserCourse() async {
-    await UserCourseService.updateUserCourse(uc.id, uc);
-    setState(() {
-      _isUserCourseUpdated = true;
-    });
-  }
+                    const SizedBox(height: 20),
 
-  int calculatePoint(int mnt) {
-    switch (mnt) {
-      case <= 120:
-        return 100;
-      case <= 240:
-        return 80;
-      case <= 180:
-        return 60;
-      case <= 240:
-        return 40;
-      case <= 300:
-        return 20;
-      case <= 360:
-        return 10;
-      default:
-        return 0;
-    }
-  }
-
-  void updateProgressValue(int progressValue) {
-    setState(() {
-      progressValue = progressValue;
-    });
-  }
-
-  Future<void> createUserBadge(int userId, int badgeId) async{
-    await BadgeService.createUserBadgeByChapterId(userId, badgeId);
-  }
-
-  Future<void> uploadFile(PlatformFile file) async {
-    final filename = '${file.name.split('.').first}_${status.userId}_${status.chapterId}_${DateTime.now().millisecondsSinceEpoch}.${file.extension}';
-    final path = 'uploads/$filename';
-
-    Uint8List bytes = file.bytes ?? await File(file.path!).readAsBytes();
-
-    try {
-      await Supabase.instance.client.storage.from('assignment').uploadBinary(path, bytes);
-      final publicUrl = getPublicUrl(path);
-      status.timeFinished = DateTime.now();
-      setState(() {
-        status.submission = publicUrl;
-        status.isCompleted = true;
-        status.assignmentDone = true;
-        widget.updateStatus(status);
-      });
-      await updateStatus();
-    } catch (e) {
-      if (kDebugMode) {
-        print('Upload error: $e');
-      }
-    }
-  }
-
-  String getPublicUrl(String filePath) {
-    return Supabase.instance.client.storage
-        .from('assigment')
-        .getPublicUrl(filePath);
-  }
-
-  void updateProgressAssignment() {
-    if (status.assignmentDone && status.isCompleted && !showDialogAssignmentOnce) {
-      showDialogAssignmentOnce = true;
-      showCompletionDialog(context, "Yeay kamu berhasil menyelesaikan Chapter ini, Ayo lanjutkan pelajari chapter yang lain");
-    }
-  }
-
-  void showCompletionDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          title: Text(
-            "Progress Completed!",
-            style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor),
-            textAlign: TextAlign.center,
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              children: [
-                Image.asset('lib/assets/pixels/check.png', height: 72),
-                SizedBox(height: 16,),
-                Text(
-                  message,
-                  style: TextStyle(fontFamily: 'DIN_Next_Rounded'),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryColor
-                ),
-                onPressed: () {
-                  Future.delayed(Duration(milliseconds: 100), () {
-                    if (context.mounted) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => CongratulationsScreen(
-                            message: "You have successfully completed this assignment!",
-                            onContinue: () {
-                              Navigator.pushAndRemoveUntil(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => Mainscreen(navIndex: 2),
-                                ),
-                                    (route) => false, // Remove all previous routes
-                              );
-                            },
-                            idBadge: idBadge,
+                    // Button Submit
+                    if (!_isSubmitting && file != null)
+                      Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primaryColor,
+                                padding: const EdgeInsets.symmetric(vertical: 12)
+                              ),
+                              onPressed: _handleSubmit,
+                              icon: const Icon(LineAwesomeIcons.paper_plane_solid, color: Colors.white),
+                              label: const Text("Submit Assignment", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ),
                           ),
-                        ),
-                      );
-                    }
-                  });
-                },
-                child: Text(
-                  "OK",
-                  style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white),
+                          TextButton(
+                            onPressed: () => setState(() => file = null),
+                            child: const Text("Hapus Pilihan", style: TextStyle(color: Colors.red)),
+                          )
+                        ],
+                      ),
+                      
+                    if (_isSubmitting)
+                      const Padding(
+                        padding: EdgeInsets.all(20.0),
+                        child: CircularProgressIndicator(),
+                      ),
+
+                    _buildFeedbackSection(),
+                    const SizedBox(height: 30),
+                  ],
                 ),
               ),
             ),
           ],
-        );
-
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _buildAssignmentContent();
-  }
-
-  Widget _buildAssignmentContent() {
-    return Container(
-      decoration: BoxDecoration(
-          image: DecorationImage(
-              image: AssetImage(
-                  'lib/assets/pictures/background-pattern.png'),
-              fit: BoxFit.cover
-          )
+        ),
       ),
-      child: Padding(
-          padding: EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            controller: ScrollController(),
-            child: Column(
-              children: [
-                assignment?.instruction == null ? CircularProgressIndicator() : _buildHTMLAssignment(),
-                assignment?.fileUrl != null && assignment?.fileUrl != "" ? ListTile(
-                    leading: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(Icons.download_rounded, size: 30, color: AppColors.primaryColor),
-                        if (downloadProgress > 0.0 && downloadProgress < 1.0) // Show progress only while downloading
-                          SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: CircularProgressIndicator(
-                              value: downloadProgress,
-                              strokeWidth: 3,
-                              backgroundColor: Colors.grey[300],
-                              color: Colors.deepPurple,
-                            ),
-                          ),
-                      ],
-                    ),
-                    title: Text("Unduh file assignment disini", style: TextStyle(fontFamily: 'DIN_Next_Rounded'),),
-                    onTap: () async {
-                      FileDownloader.downloadFile(
-                        url: assignment!.fileUrl!,
-                        onProgress: (name, progress) {
-                          setState(() {
-                            debugPrint("Download Progress: $progress");
-                            downloadProgress = progress / 100;
-                          });
-                        },
-                        onDownloadCompleted: (filePath) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text("Download Complete, saved in $filePath", style: TextStyle(fontFamily: 'DIN_Next_Rounded'),),
-                              action: SnackBarAction(
-                                label: "Open",
-                                onPressed: () => _openFile(filePath),
-                              ),
-                            ),
-                          );
-                          setState(() {
-                            downloadProgress = 0;
-                          });
-                        },
-                      );
-                    }
-                ) : SizedBox(),
-                Padding(
-                  padding: EdgeInsets.all(16),
-                  child: GestureDetector(
-                    onTap: () async {
-                      final result = await FilePicker.platform.pickFiles(
-                        type: FileType.custom,
-                        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-                      );
-
-                      if (result == null) return;
-
-                      final fileSizeInMB = result.files.first.size / (1024 * 1024); // Convert bytes to MB
-
-                      if (fileSizeInMB > 5) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('File size must be 5MB or less', style: TextStyle(fontFamily: 'DIN_Next_Rounded'),)),
-                        );
-                      } else {
-                        setState(() {
-                          file = result.files.first; // Ensure file updates
-                        });
-                      }
-                    },
-                    child: file == null
-                        ? _buildUploadBox()  // UI before file selection
-                        : _buildFilePreview(file!), // Updated file preview
-                  ),
-                ),
-                lastestSubmissionUrl != '' ? _buildExistingFile(lastestSubmissionUrl) : SizedBox(),
-                file == null ? SizedBox() :
-                !_isFileUploaded && !_isUserBadgeUpdated && !_isUserCourseUpdated ?
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 10),
-                    Text(
-                      "Mohon Tunggu, sedang mengunggah berkas",
-                      style:
-                      TextStyle(fontSize: 16, fontFamily: 'DIN_Next_Rounded'),
-                    ),
-                  ],
-                ) : Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          setState(() {
-                            _isFileUploaded = false;
-                            _isUserBadgeUpdated = false;
-                            _isUserCourseUpdated = false;
-                          });
-
-                          Duration difference = status.timeStarted.difference(status.timeFinished);
-                          print(user?.points);
-                          print(status.assignmentDone);
-                          print(complete);
-                          print("awoo");
-                          if(!status.assignmentDone && !complete){
-                            user?.points = user!.points! + calculatePoint(difference.inMinutes);
-                          }
-                          print(user?.points);
-                          print("awoo");
-
-                          if (widget.level == uc.currentChapter) {
-                            uc.currentChapter++;
-                            uc.progress = (((uc.currentChapter - 1) / chLength) * 100).toInt();
-                          }
-
-                          if (idBadge != 0) {
-                            createUserBadge(user!.id, idBadge);
-                            user?.badges = user!.badges! + 1;
-                          }
-                          await uploadFile(file!);
-                          await Future.wait([
-                            updateUserPointsAndBadge(),
-                            updateUserCourse(),
-                          ]);
-
-                          if (_isUserCourseUpdated && _isUserBadgeUpdated && _isFileUploaded) {
-                            Future.delayed(Duration(milliseconds: 200), () {
-                              if (complete) {
-                                Navigator.pop(context);
-                              } else {
-                                updateProgressAssignment();
-                              }
-                            });
-                          }
-                        },
-                        style: ButtonStyle(backgroundColor: WidgetStatePropertyAll(AppColors.primaryColor)),
-                        icon: Icon(LineAwesomeIcons.paper_plane_solid, color: Colors.white),
-                        label: Text(
-                          'Submit',
-                          style: TextStyle(color: Colors.white, fontFamily: 'DIN_Next_Rounded'),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                          onPressed:() {
-                            setState(() {
-                              file = null;
-                            });
-                          },
-                          style: ButtonStyle(backgroundColor: WidgetStatePropertyAll(Colors.red)),
-                          icon: Icon(LineAwesomeIcons.trash_alt, color: Colors.white,),
-                          label: Text('Delete', style: TextStyle(color: Colors.white, fontFamily: 'DIN_Next_Rounded'),)
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 10,),
-                Container(
-                  width: MediaQuery.of(context).size.width,
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade400),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        Text("Feedback", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
-                        Text("Score : ${status.assignmentScore}", style: TextStyle(fontFamily: 'DIN_Next_Rounded')),
-                        Text(
-                          status.assignmentFeedback,
-                          style: TextStyle(fontFamily: 'DIN_Next_Rounded'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-      ),
-    );
-  }
-
-  Widget _buildHTMLAssignment() {
-    return SizedBox(
-        width: double.infinity,
-        child: Text(assignment!.instruction, style: TextStyle(fontFamily: 'DIN_Next_Rounded'),)
     );
   }
 
   Widget _buildUploadBox() {
     return DottedBorder(
+      color: Colors.grey,
       borderType: BorderType.RRect,
-      radius: Radius.circular(12),
-      color: Colors.grey.shade400,
-      child: SizedBox(
+      radius: const Radius.circular(12),
+      child: Container(
+        height: 150,
         width: double.infinity,
-        height: 300,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.file_present, color: Colors.grey.shade400, size: 80),
-              Text(
-                'Tap untuk mengunggah file',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontFamily: 'DIN_Next_Rounded'),
-              ),
-            ],
-          ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(LineAwesomeIcons.file_upload_solid, size: 40, color: Colors.grey),
+            SizedBox(height: 8),
+            Text("Tap untuk pilih file tugas (PDF/JPG)", style: TextStyle(color: Colors.grey)),
+          ],
         ),
       ),
     );
@@ -502,74 +313,43 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
 
   Widget _buildFilePreview(PlatformFile file) {
     return DottedBorder(
+      color: AppColors.primaryColor,
       borderType: BorderType.RRect,
-      radius: Radius.circular(12),
-      color: Colors.grey.shade400,
-      child: SizedBox(
+      radius: const Radius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
         width: double.infinity,
-        height: 300,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image(image: AssetImage(
-                  file.extension == 'pdf'
-                      ? 'lib/assets/iconpdf.png'
-                      : file.extension == 'jpg'
-                      ? 'lib/assets/iconjpg.png'
-                      : ''
-              ), width: 80, height: 80,
-              ),
-              Text(
-                file.name,
-                style: TextStyle(fontSize: 12, color: Colors.deepPurple.shade700, fontFamily: 'DIN_Next_Rounded'),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+        child: Column(
+          children: [
+            const Icon(LineAwesomeIcons.file_pdf, size: 50, color: AppColors.primaryColor),
+            const SizedBox(height: 10),
+            Text(file.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text("${(file.size / 1024).toStringAsFixed(2)} KB", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildExistingFile(String url) {
-    return GestureDetector(
-      onTap: () async {
-        FileDownloader.downloadFile(
-          url: url,
-          onDownloadCompleted: (filePath) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text("Download Complete, saved in $filePath", style: TextStyle(fontFamily: 'DIN_Next_Rounded'),),
-                action: SnackBarAction(
-                  label: "Open",
-                  onPressed: () => _openFile(filePath),
-                ),
-              ),
-            );
-          },
-        );
-      },
-      child: Container(
-        padding: EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade400),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.insert_drive_file, color: Colors.deepPurple),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                  url.split('/').last.replaceAll('%20', ' '),
-                  style: TextStyle(fontSize: 14, fontFamily: 'DIN_Next_Rounded'),
-                  overflow: TextOverflow.ellipsis
-              ),
-            ),
-          ],
-        ),
+  Widget _buildFeedbackSection() {
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.8),
+        border: Border.all(color: Colors.grey.shade300), 
+        borderRadius: BorderRadius.circular(12)
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Feedback Instruktur", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Divider(),
+          Text("Skor: ${status.assignmentScore}", style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryColor)),
+          const SizedBox(height: 4),
+          Text(status.assignmentFeedback.isEmpty ? "Belum ada feedback dari instruktur." : status.assignmentFeedback),
+        ],
       ),
     );
   }

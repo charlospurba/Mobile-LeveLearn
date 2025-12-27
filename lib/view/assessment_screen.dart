@@ -1,7 +1,6 @@
-import 'dart:async'; 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 
 import '../model/assessment.dart';
@@ -19,6 +18,7 @@ class AssessmentScreen extends StatefulWidget {
   final Function(ChapterStatus) updateStatus;
   final Function(bool) updateAssessmentStarted;
   final Function(bool) updateAssessmentFinished;
+
   const AssessmentScreen({
     super.key,
     required this.status,
@@ -26,7 +26,7 @@ class AssessmentScreen extends StatefulWidget {
     required this.updateMaterialLocked,
     required this.updateStatus,
     required this.updateAssessmentStarted,
-    required this.updateAssessmentFinished
+    required this.updateAssessmentFinished,
   });
 
   @override
@@ -36,9 +36,7 @@ class AssessmentScreen extends StatefulWidget {
 class _AssessmentScreenState extends State<AssessmentScreen> {
   bool _assessmentStarted = false;
   bool _assessmentFinished = false;
-  bool tapped = false;
   bool assessmentDone = false;
-  bool allQuestionsAnswered = false;
   int correctAnswer = 0;
   int point = 0;
   Student? user;
@@ -48,7 +46,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   int _currentPage = 0;
   bool _calculateComplete = false;
 
-  // --- LOGIKA TIMER ---
   Timer? _timer;
   int _secondsRemaining = 30;
 
@@ -56,10 +53,8 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   void initState() {
     status = widget.status;
     user = widget.user;
-    // Ambil status awal dari database
     assessmentDone = widget.status.assessmentDone;
-    allQuestionsAnswered = widget.status.assessmentDone;
-    
+
     if (assessmentDone) {
       point = widget.status.assessmentGrade;
     }
@@ -80,10 +75,10 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     if (question != null && question!.questions.isNotEmpty) {
       _secondsRemaining = (question!.questions[_currentPage].type == 'EY') ? 60 : 30;
     }
-    
+
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_secondsRemaining > 0) {
-        setState(() { _secondsRemaining--; });
+        if (mounted) setState(() => _secondsRemaining--);
       } else {
         _timer?.cancel();
         _handleTimeUp();
@@ -92,8 +87,9 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   }
 
   void _handleTimeUp() {
-    if (_currentPage < question!.questions.length - 1) {
-      _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    if (_currentPage < (question?.questions.length ?? 0) - 1) {
+      _pageController.nextPage(
+          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     } else {
       _executeSubmit();
     }
@@ -101,25 +97,23 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
 
   void _executeSubmit() {
     _timer?.cancel();
-    setState(() {
-      tapped = true;
-      allQuestionsAnswered = true;
-    });
     _showQuizResults();
   }
 
   void getAssessment(int id) async {
     final resultAssessment = await ChapterService.getAssessmentByChapterId(id);
-    setState(() {
-      question = resultAssessment;
-      if (assessmentDone && status.assessmentAnswer.isNotEmpty) {
-        for (int i = 0; i < question!.questions.length; i++) {
-          if (i < status.assessmentAnswer.length) {
-            question!.questions[i].selectedAnswer = status.assessmentAnswer[i];
+    if (mounted) {
+      setState(() {
+        question = resultAssessment;
+        if (assessmentDone && status.assessmentAnswer.isNotEmpty) {
+          for (int i = 0; i < question!.questions.length; i++) {
+            if (i < status.assessmentAnswer.length) {
+              question!.questions[i].selectedAnswer = status.assessmentAnswer[i];
+            }
           }
         }
-      }
-    });
+      });
+    }
   }
 
   void _showFinishConfirmation() {
@@ -129,95 +123,126 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
-        title: const Text('Finish Assessment', style: TextStyle(fontFamily: 'DIN_Next_Rounded')),
-        content: const Text('Once you submit, you cannot change your answers or retake this assessment.'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Selesaikan Assessment?',
+            style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold)),
+        content: const Text(
+            'Setelah dikirim, Anda tidak dapat mengubah jawaban atau mengulang kuis ini.'),
         actions: [
-          TextButton(onPressed: () { Navigator.pop(context); _startTimer(); }, child: const Text('Cancel')),
+          TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _startTimer();
+              },
+              child: const Text('Batal')),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
             onPressed: () {
               Navigator.pop(context);
               _executeSubmit();
             },
-            child: const Text('Submit', style: TextStyle(color: Colors.white)),
+            child: const Text('Kirim', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  Future<int> getScore() async {
-    int score = 0;
-    double rangeScore = 100 / question!.questions.length;
-    int tempCorrectAnswer = 0;
+  // --- LOGIKA UTAMA SINKRONISASI AKURAT ---
+  void _showQuizResults() async {
+    if (_calculateComplete) return;
 
-    for (int index = 0; index < question!.questions.length; index++) {
-      Question i = question!.questions[index];
-      if (i.type != 'EY') {
-        if (i.selectedAnswer == i.correctedAnswer) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    int tempCorrect = 0;
+    double totalScoreCalculated = 0;
+    double rangeScore = 100 / (question?.questions.length ?? 1);
+
+    List<Future<void>> calculationTasks = [];
+
+    for (int index = 0; index < (question?.questions.length ?? 0); index++) {
+      Question q = question!.questions[index];
+      String userAns = q.selectedAnswer.toString().trim().toLowerCase();
+      String correctAns = q.correctedAnswer.toString().trim().toLowerCase();
+
+      if (q.type != 'EY') {
+        if (userAns == correctAns) {
+          tempCorrect++;
+          totalScoreCalculated += rangeScore;
           question!.questions[index].isCorrect = true;
-          question!.questions[index].score = rangeScore.ceil();
-          score += rangeScore.ceil();
-          tempCorrectAnswer++;
         }
       } else {
-        int fullscore = rangeScore.ceil();
-        try {
-          double similarity = await ChapterService.checkSimiliarity(i.correctedAnswer, i.selectedAnswer);
-          int earned = (fullscore * similarity).ceil();
-          question!.questions[index].score = earned;
-          score += earned;
-          if (similarity > 0.5) {
-            question!.questions[index].isCorrect = true;
-            tempCorrectAnswer++;
-          }
-        } catch (e) { debugPrint("Score error: $e"); }
+        calculationTasks.add(
+          ChapterService.checkSimiliarity(q.correctedAnswer, q.selectedAnswer)
+              .timeout(const Duration(seconds: 2))
+              .then((sim) {
+            totalScoreCalculated += (rangeScore * sim);
+            if (sim > 0.5) {
+              tempCorrect++;
+              question!.questions[index].isCorrect = true;
+            }
+          }).catchError((e) => debugPrint("Similarity check failed: $e")),
+        );
       }
     }
-    setState(() { correctAnswer = tempCorrectAnswer; });
-    return score;
-  }
 
-  void _showQuizResults() async {
-    setState(() { _assessmentFinished = true; });
-    
-    int finalScore = await getScore();
-    
-    setState(() {
-      point = finalScore > 100 ? 100 : finalScore;
-      _calculateComplete = true;
-    });
+    if (calculationTasks.isNotEmpty) await Future.wait(calculationTasks);
 
-    if(_calculateComplete) {
-      if(!widget.status.assessmentDone && !assessmentDone){
-        user!.points = (user!.points ?? 0) + point;
-        assessmentDone = true;
-        status.assessmentGrade = point;
-      }
+    int finalScore = totalScoreCalculated.round();
+    if (finalScore > 100) finalScore = 100;
 
-      if (question!.answers == null) question!.answers = [];
-      question!.answers!.clear();
-      for (var q in question!.questions) {
-        question!.answers!.add(q.selectedAnswer);
-      }
+    if (mounted) {
+      setState(() {
+        point = finalScore;
+        correctAnswer = tempCorrect;
+        _calculateComplete = true;
+        _assessmentFinished = true;
+      });
+    }
+
+    try {
+      user!.points = (user!.points ?? 0) + finalScore;
       status.assessmentDone = true;
-      status.assessmentAnswer = question!.answers!;
+      status.assessmentGrade = finalScore;
+      status.assessmentAnswer = question!.questions.map((q) => q.selectedAnswer).toList();
+
+      // 1. Simpan data progres chapter & penambahan poin total
+      await Future.wait([
+        UserService.updateUserPoints(user!),
+        UserChapterService.updateChapterStatus(status.id, status),
+      ]);
+
+      // 2. TRIGGER CHALLENGE SECARA AKURAT
+      // Mengirim field 'lastScore' agar backend bisa memicu tantangan 'PERFECT_SCORE' jika nilainya 100
+      Map<String, dynamic> challengeData = {
+        "points": user!.points,
+        "lastScore": finalScore 
+      };
       
-      // Update DB sebelum memberitahu sistem bahwa assessment sudah selesai total
-      await UserService.updateUserPoints(user!);
-      status = await UserChapterService.updateChapterStatus(status.id, status);
-      
-      // Kirim status terbaru ke Parent agar tombol "Mulai" terkunci permanen
-      widget.updateStatus(status); 
-      widget.updateAssessmentFinished(true);
-      widget.updateAssessmentStarted(false);
-      widget.updateMaterialLocked(false);
+      // Menggunakan fungsi update data kustom di UserService
+      await UserService.updateUserRaw(user!.id, challengeData);
+
+      if (mounted) {
+        Navigator.pop(context); // Tutup loading
+        widget.updateStatus(status);
+        widget.updateAssessmentFinished(true);
+        widget.updateAssessmentStarted(false);
+        widget.updateMaterialLocked(false);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      debugPrint("Gagal sinkronisasi Assessment: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // PROTEKSI UTAMA: Jika status pengerjaan sudah DONE di DB, langsung tampilkan hasil
     if (widget.status.assessmentDone || _assessmentFinished) {
       return _buildQuizResult();
     }
@@ -228,19 +253,30 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
 
     return question != null && question!.questions.isNotEmpty
         ? Container(
-            decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover)),
+            decoration: const BoxDecoration(
+                image: DecorationImage(
+                    image: AssetImage('lib/assets/pictures/background-pattern.png'),
+                    fit: BoxFit.cover)),
             child: Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
-                      LinearProgressIndicator(value: (_currentPage + 1) / question!.questions.length, backgroundColor: Colors.grey.shade300, valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
+                      LinearProgressIndicator(
+                          value: (_currentPage + 1) / question!.questions.length,
+                          backgroundColor: Colors.grey.shade300,
+                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
                       const SizedBox(height: 10),
                       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          Icon(LineAwesomeIcons.clock, color: _secondsRemaining < 10 ? Colors.red : Colors.black54, size: 20),
-                          const SizedBox(width: 8),
-                          Text("Time Left: $_secondsRemaining s", style: TextStyle(fontWeight: FontWeight.bold, color: _secondsRemaining < 10 ? Colors.red : Colors.black54)),
+                        Icon(LineAwesomeIcons.clock,
+                            color: _secondsRemaining < 10 ? Colors.red : Colors.black54,
+                            size: 20),
+                        const SizedBox(width: 8),
+                        Text("Sisa Waktu: $_secondsRemaining detik",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _secondsRemaining < 10 ? Colors.red : Colors.black54)),
                       ]),
                     ],
                   ),
@@ -248,20 +284,41 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
                 Expanded(
                   child: PageView.builder(
                     controller: _pageController,
-                    physics: const NeverScrollableScrollPhysics(), // User tidak bisa balik soal
+                    physics: const NeverScrollableScrollPhysics(),
                     itemCount: question!.questions.length,
-                    onPageChanged: (int page) { setState(() { _currentPage = page; }); _startTimer(); },
-                    itemBuilder: (context, count) => Padding(padding: const EdgeInsets.all(20), child: _buildSingleQuestion(count)),
+                    onPageChanged: (int page) {
+                      if (mounted) setState(() => _currentPage = page);
+                      _startTimer();
+                    },
+                    itemBuilder: (context, count) => Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: _buildSingleQuestion(count)),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: SizedBox(width: double.infinity, child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor, padding: const EdgeInsets.symmetric(vertical: 12)),
-                      onPressed: () => _currentPage < question!.questions.length - 1 ? _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut) : _showFinishConfirmation(),
-                      icon: Icon(_currentPage < question!.questions.length - 1 ? LineAwesomeIcons.arrow_right_solid : LineAwesomeIcons.check_solid, color: Colors.white),
-                      label: Text(_currentPage < question!.questions.length - 1 ? 'Next Question' : 'Submit Assessment', style: const TextStyle(color: Colors.white)),
-                  )),
+                  child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 12)),
+                        onPressed: () => _currentPage < question!.questions.length - 1
+                            ? _pageController.nextPage(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut)
+                            : _showFinishConfirmation(),
+                        icon: Icon(
+                            _currentPage < question!.questions.length - 1
+                                ? LineAwesomeIcons.arrow_right_solid
+                                : LineAwesomeIcons.check_solid,
+                            color: Colors.white),
+                        label: Text(
+                            _currentPage < question!.questions.length - 1
+                                ? 'Pertanyaan Berikutnya'
+                                : 'Kirim Jawaban',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      )),
                 ),
               ],
             ),
@@ -271,23 +328,38 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
 
   Widget _buildAssessmentInitial() {
     return Container(
-      decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover)),
+      decoration: const BoxDecoration(
+          image: DecorationImage(
+              image: AssetImage('lib/assets/pictures/background-pattern.png'),
+              fit: BoxFit.cover)),
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Image.asset('lib/assets/pixels/assessment-pixel.png', height: 80),
-              const SizedBox(height: 16),
-              const Text('Start Assessment', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
-              const SizedBox(height: 12),
-              const Text("30s (Choice) / 60s (Essay)\nOnly one attempt allowed.", textAlign: TextAlign.center),
-              const SizedBox(height: 32),
-              SizedBox(width: double.infinity, child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor, padding: const EdgeInsets.symmetric(vertical: 12)),
-                  onPressed: () { setState(() { _assessmentStarted = true; }); _startTimer(); },
+            Image.asset('lib/assets/pixels/assessment-pixel.png', height: 80),
+            const SizedBox(height: 16),
+            const Text('Mulai Assessment',
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'DIN_Next_Rounded')),
+            const SizedBox(height: 12),
+            const Text("Pilihan Ganda (30 detik) / Essay (60 detik)\nHanya diperbolehkan satu kali percobaan.",
+                textAlign: TextAlign.center),
+            const SizedBox(height: 32),
+            SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 12)),
+                  onPressed: () {
+                    setState(() => _assessmentStarted = true);
+                    _startTimer();
+                  },
                   icon: const Icon(LineAwesomeIcons.rocket_solid, color: Colors.white),
-                  label: const Text('Start Now', style: TextStyle(color: Colors.white)),
-              )),
+                  label: const Text('Mulai Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )),
           ]),
         ),
       ),
@@ -298,93 +370,135 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     final q = question!.questions[number];
     return SingleChildScrollView(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: Text("${number + 1}. ${q.question}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 20),
-          if (q.type == 'EY') 
-            Card(color: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), child: Padding(padding: const EdgeInsets.all(16), child: TextField(maxLines: 5, decoration: const InputDecoration(hintText: "Type answer here...", border: InputBorder.none),
-              onChanged: (val) { setState(() { q.selectedAnswer = val; }); },
-            )))
-          else if (q.type == 'TF')
-            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: ['True', 'False'].map((opt) => ElevatedButton(
-              onPressed: () { setState(() { q.selectedAnswer = opt; }); },
-              style: ElevatedButton.styleFrom(backgroundColor: q.selectedAnswer == opt ? AppColors.primaryColor : Colors.grey.shade200),
-              child: Text(opt, style: TextStyle(color: q.selectedAnswer == opt ? Colors.white : Colors.black)),
-            )).toList())
-          else 
-            Column(children: q.option.map((answer) {
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                decoration: BoxDecoration(
-                  color: q.selectedAnswer == answer ? AppColors.primaryColor.withOpacity(0.1) : Colors.white,
-                  border: Border.all(color: q.selectedAnswer == answer ? AppColors.primaryColor : Colors.grey.shade300, width: 2),
-                  borderRadius: BorderRadius.circular(15)
-                ),
-                child: RadioListTile<String>(
-                  title: Text(answer),
-                  value: answer,
-                  groupValue: q.selectedAnswer,
-                  activeColor: AppColors.primaryColor,
-                  onChanged: (val) { setState(() { q.selectedAnswer = val!; }); },
-                ),
-              );
-            }).toList())
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
+          child: Text("${number + 1}. ${q.question}",
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(height: 20),
+        if (q.type == 'EY')
+          Card(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: TextField(
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                        hintText: "Ketik jawaban Anda di sini...", border: InputBorder.none),
+                    onChanged: (val) {
+                      q.selectedAnswer = val;
+                    },
+                  )))
+        else
+          Column(
+              children: q.option.map((answer) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                  color: q.selectedAnswer == answer
+                      ? AppColors.primaryColor.withOpacity(0.1)
+                      : Colors.white,
+                  border: Border.all(
+                      color: q.selectedAnswer == answer
+                          ? AppColors.primaryColor
+                          : Colors.grey.shade300,
+                      width: 2),
+                  borderRadius: BorderRadius.circular(15)),
+              child: RadioListTile<String>(
+                title: Text(answer),
+                value: answer,
+                groupValue: q.selectedAnswer,
+                activeColor: AppColors.primaryColor,
+                onChanged: (val) {
+                  if (mounted) setState(() => q.selectedAnswer = val!);
+                },
+              ),
+            );
+          }).toList())
       ]),
     );
   }
 
-  // --- TAMPILAN HASIL---
   Widget _buildQuizResult() {
     return Container(
-      decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover)),
+      decoration: const BoxDecoration(
+          image: DecorationImage(
+              image: AssetImage('lib/assets/pictures/background-pattern.png'),
+              fit: BoxFit.cover)),
       child: SingleChildScrollView(
           child: Column(children: [
-              const SizedBox(height: 40),
-              Card(
-                margin: const EdgeInsets.all(16),
-                color: AppColors.primaryColor,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Hasil Assessment', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                    const SizedBox(height: 10),
-                    Table(
-                      columnWidths: const { 0: FlexColumnWidth(1), 1: FlexColumnWidth(2) },
-                      children: [
-                        TableRow(children: [
-                          const Text('Correct', style: TextStyle(color: Colors.white, fontFamily: 'DIN_Next_Rounded')),
-                          Text(': $correctAnswer / ${question?.questions.length ?? 0}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                        ]),
-                        TableRow(children: [
-                          const Text('Score', style: TextStyle(color: Colors.white, fontFamily: 'DIN_Next_Rounded')),
-                          Text(': ${status.assessmentGrade} / 100', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                        ]),
-                      ],
-                    ),
-                  ]),
-                ),
+        const SizedBox(height: 40),
+        Card(
+          margin: const EdgeInsets.all(16),
+          color: AppColors.primaryColor,
+          elevation: 8,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Hasil Assessment',
+                  style: TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Divider(color: Colors.white30),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Benar', style: TextStyle(color: Colors.white, fontSize: 16)),
+                  Text('$correctAnswer / ${question?.questions.length ?? 0}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18)),
+                ],
               ),
-              if (question != null) 
-                ...List.generate(question!.questions.length, (i) => _buildReviewCard(i)),
-              const SizedBox(height: 40),
-          ])),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Skor Akhir', style: TextStyle(color: Colors.white, fontSize: 16)),
+                  Text('${status.assessmentGrade} / 100',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 22)),
+                ],
+              ),
+            ]),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text("Review Jawaban:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ),
+        ),
+        if (question != null)
+          ...List.generate(question!.questions.length, (i) => _buildReviewCard(i)),
+        const SizedBox(height: 40),
+      ])),
     );
   }
 
   Widget _buildReviewCard(int number) {
     final q = question!.questions[number];
-    final bool isCorrect = q.selectedAnswer == q.correctedAnswer;
+    final bool isCorrect = q.selectedAnswer.toString().trim().toLowerCase() ==
+        q.correctedAnswer.toString().trim().toLowerCase();
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isCorrect ? Colors.green : Colors.red, width: 2)),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: isCorrect ? Colors.green : Colors.red, width: 2)),
       child: ListTile(
-        leading: Icon(isCorrect ? Icons.check_circle : Icons.cancel, color: isCorrect ? Colors.green : Colors.red),
-        title: Text(q.question),
-        subtitle: Text("Your Answer: ${q.selectedAnswer}\nCorrect Answer: ${q.correctedAnswer}"),
+        leading: Icon(isCorrect ? Icons.check_circle : Icons.cancel,
+            color: isCorrect ? Colors.green : Colors.red),
+        title: Text(q.question, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text("Jawaban Anda: ${q.selectedAnswer}\nJawaban Benar: ${q.correctedAnswer}"),
+        ),
       ),
     );
   }
-
-  Widget _emptyState() { return const Center(child: Text("No questions.")); }
 }

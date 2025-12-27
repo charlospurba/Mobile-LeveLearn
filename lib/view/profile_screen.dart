@@ -29,7 +29,6 @@ class AvatarModel {
   final int id;
   final String imageUrl;
   final int price;
-
   AvatarModel({required this.id, required this.imageUrl, required this.price});
 }
 
@@ -47,8 +46,6 @@ class _ProfileState extends State<ProfileScreen> {
   List<Student> list = [];
   int rank = 0;
   List<UserBadge>? userBadges = [];
-  Course? course;
-  Chapter? chapter;
   List<Course>? allCourses;
   int streakDays = 0;
 
@@ -69,104 +66,121 @@ class _ProfileState extends State<ProfileScreen> {
 
   @override
   void initState() {
-    getUserData();
     super.initState();
+    getUserData();
   }
 
-  Future<void> getUserData() async {
+Future<void> getUserData() async {
+  try {
     prefs = await SharedPreferences.getInstance();
     final idUser = prefs.getInt('userId');
 
     if (idUser != null) {
+      // 1. Ambil data user secara terpisah sebagai jangkar utama
       Student fetchedUser = await UserService.getUserById(idUser);
+      
+      // 2. Ambil data pendukung lainnya
+      final results = await Future.wait([
+        BadgeService.getUserBadgeListByUserId(idUser),
+        UserService.getAllUser(),
+        CourseService.getEnrolledCourse(idUser),
+      ]);
+
       if (mounted) {
         setState(() {
           user = fetchedUser;
           streakDays = fetchedUser.streak;
+          
+          // PERBAIKAN: Casting yang aman dengan keyword 'as' atau 'is'
+          if (results[0] is List<UserBadge>) {
+            final List<UserBadge> allBadges = results[0] as List<UserBadge>;
+            userBadges = allBadges.where((b) => !b.isPurchased).toList();
+          }
+
+          if (results[1] is List<Student>) {
+            final List<Student> allUsers = results[1] as List<Student>;
+            list = allUsers.where((u) => u.role == 'STUDENT').toList();
+            list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
+          }
+
+          if (results[2] is List<Course>) {
+            allCourses = results[2] as List<Course>;
+          }
+
+          // Hitung Rank
+          for (int i = 0; i < list.length; i++) {
+            if (list[i].id == user?.id) {
+              rank = i + 1;
+              break;
+            }
+          }
+          isLoading = false;
         });
       }
-      getUserBadges(idUser);
-      getAllUser();
-      getEnrolledCourse(idUser);
     }
+  } catch (e) {
+    debugPrint("Error detail profile screen: $e");
+    if (mounted) setState(() => isLoading = false);
   }
-
-  Future<void> getAllUser() async {
-    final result = await UserService.getAllUser();
-    if (mounted) {
-      setState(() {
-        list = result.where((u) => u.role == 'STUDENT').toList();
-        list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
-      });
-      for (int i = 0; i < list.length; i++) {
-        if (list[i].id == user?.id) {
-          setState(() => rank = i + 1);
-          break;
-        }
-      }
-    }
-  }
-
-  Future<void> getEnrolledCourse(int userId) async {
-    final result = await CourseService.getEnrolledCourse(userId);
-    if (mounted) setState(() => allCourses = result);
-  }
-
-  Future<void> getUserBadges(int userId) async {
-    final result = await BadgeService.getUserBadgeListByUserId(userId);
-    if (mounted) {
-      setState(() {
-        // FILTER: Kunci utama agar sinkron dengan Avatar
-        userBadges = result.where((b) => !b.isPurchased).toList();
-        isLoading = false;
-      });
-    }
-  }
-
+}
   void logout() async {
     prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     if (mounted) {
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+      Navigator.pushAndRemoveUntil(
+        context, 
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return isLoading
-        ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-        : Scaffold(
-            appBar: AppBar(
-              backgroundColor: GlobalVar.primaryColor,
-              automaticallyImplyLeading: false,
-              elevation: 0,
-              title: const Text("Profile",
-                  style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (user == null) {
+      return const Scaffold(body: Center(child: Text("User data not found")));
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: GlobalVar.primaryColor,
+        automaticallyImplyLeading: false,
+        elevation: 0,
+        title: const Text("Profile",
+            style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
+      ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+                image: DecorationImage(
+                    image: AssetImage('lib/assets/pictures/background-pattern.png'),
+                    fit: BoxFit.cover)),
+          ),
+          RefreshIndicator(
+            onRefresh: getUserData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                children: [
+                  _buildProfileHeader(),
+                  const SizedBox(height: 10),
+                  _buildMyBadgesSection(),
+                  _buildMenuSection(),
+                  const SizedBox(height: 20),
+                  _buildLogoutButton(),
+                  const SizedBox(height: 30),
+                ],
+              ),
             ),
-            body: Stack(
-              children: [
-                Container(
-                  decoration: const BoxDecoration(
-                      image: DecorationImage(
-                          image: AssetImage('lib/assets/pictures/background-pattern.png'),
-                          fit: BoxFit.cover)),
-                ),
-                SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildProfileHeader(),
-                      const SizedBox(height: 10),
-                      _buildMyBadgesSection(),
-                      _buildMenuSection(),
-                      const SizedBox(height: 20),
-                      _buildLogoutButton(),
-                      const SizedBox(height: 30),
-                    ],
-                  ),
-                )
-              ],
-            ));
+          )
+        ],
+      ),
+    );
   }
 
   Widget _buildProfileHeader() {
@@ -180,52 +194,37 @@ class _ProfileState extends State<ProfileScreen> {
           const SizedBox(height: 10),
           Text(user?.name ?? "",
               style: const TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.bold,
-                  fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'DIN_Next_Rounded',
+                  color: Colors.white)),
           Text(user?.studentId ?? "",
               style: const TextStyle(fontFamily: 'DIN_Next_Rounded', color: GlobalVar.accentColor)),
           const SizedBox(height: 25),
-          
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.primaryColor.withAlpha(25), 
+              color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(25.0),
-              border: Border.all(color: Colors.white.withAlpha(50)),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
             ),
             child: Column(
               children: [
-                DefaultTextStyle(
-                  style: const TextStyle(color: Colors.white, fontFamily: 'DIN_Next_Rounded'),
-                  child: Theme(
-                    data: Theme.of(context).copyWith(
-                      iconTheme: const IconThemeData(color: Colors.white),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Statistik Badge mengambil dari list yang sudah difilter
-                        BadgeStat(count: userBadges?.length ?? 0),
-                        CourseStat(count: allCourses?.length ?? 0),
-                        RankStat(rank: rank, total: list.length),
-                        StreakStat(days: streakDays),
-                      ],
-                    ),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    BadgeStat(count: userBadges?.length ?? 0),
+                    CourseStat(count: allCourses?.length ?? 0),
+                    RankStat(rank: rank, total: list.length),
+                    StreakStat(days: streakDays),
+                  ],
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Divider(color: Colors.white24),
                 ),
-                Theme(
-                  data: Theme.of(context).copyWith(
-                    textTheme: const TextTheme(
-                      bodyMedium: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    )
-                  ),
-                  child: TotalPoints(points: user?.points ?? 0),
-                ),
+                TotalPoints(points: user?.points ?? 0),
               ],
             ),
           ),
@@ -237,33 +236,48 @@ class _ProfileState extends State<ProfileScreen> {
   Widget _buildAvatarStack() {
     return Stack(
       children: [
-        SizedBox(
-          width: 120, height: 120,
+        Container(
+          width: 120,
+          height: 120,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 4),
+          ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(100),
-            child: user?.image != null && user?.image != ""
+            child: user?.image != null && user!.image!.isNotEmpty
                 ? (user!.image!.startsWith('lib/assets/')
                     ? Image.asset(user!.image!, fit: BoxFit.cover)
-                    : Image.network(user!.image!, fit: BoxFit.cover, 
-                        errorBuilder: (context, error, stackTrace) => 
-                          const Icon(Icons.person, size: 100, color: Colors.white)))
-                : const Icon(Icons.person, size: 100, color: Colors.white),
+                    : Image.network(
+                        user!.image!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.person, size: 80, color: Colors.white),
+                      ))
+                : const Icon(Icons.person, size: 80, color: Colors.white),
           ),
         ),
         Positioned(
-          bottom: 0, right: 0,
+          bottom: 0,
+          right: 0,
           child: GestureDetector(
             onTap: () async {
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => UpdateProfile(user: user!, availableAvatars: availableAvatars)),
+                MaterialPageRoute(
+                    builder: (context) => UpdateProfile(
+                        user: user!, availableAvatars: availableAvatars)),
               );
               if (result == true) getUserData();
             },
             child: Container(
-              width: 35, height: 35,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), color: GlobalVar.secondaryColor),
-              child: const Icon(LineAwesomeIcons.pencil_alt_solid, color: Colors.white, size: 20),
+              width: 35,
+              height: 35,
+              decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: GlobalVar.secondaryColor,
+                  border: Border.all(color: Colors.white, width: 2)),
+              child: const Icon(LineAwesomeIcons.pencil_alt_solid, color: Colors.white, size: 18),
             ),
           ),
         )
@@ -274,28 +288,35 @@ class _ProfileState extends State<ProfileScreen> {
   Widget _buildMyBadgesSection() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
+      width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.grey.withAlpha(50), spreadRadius: 2, blurRadius: 5)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), spreadRadius: 2, blurRadius: 10)
+        ],
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('My Badges', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: GlobalVar.primaryColor, fontFamily: 'DIN_Next_Rounded')),
+          const Text('My Badges',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: GlobalVar.primaryColor,
+                  fontFamily: 'DIN_Next_Rounded')),
           const SizedBox(height: 12),
           SizedBox(
             height: 70,
             child: userBadges != null && userBadges!.isNotEmpty
                 ? ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    itemCount: userBadges?.length,
+                    itemCount: userBadges!.length,
                     itemBuilder: (context, index) {
                       final badge = userBadges![index].badge;
                       if (badge == null) return const SizedBox();
-                      
-                      // PERBAIKAN: Bersihkan URL double slash agar gambar tidak error
+
                       String fixUrl = badge.image ?? "";
                       if (fixUrl.contains("badges//")) {
                         fixUrl = fixUrl.replaceAll("badges//", "badges/");
@@ -307,19 +328,24 @@ class _ProfileState extends State<ProfileScreen> {
                           padding: const EdgeInsets.only(right: 12),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: fixUrl != ''
+                            child: fixUrl.isNotEmpty
                                 ? Image.network(
-                                    fixUrl, 
-                                    width: 60, height: 60, fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) => Image.asset('lib/assets/pictures/icon.png', width: 60, height: 60),
+                                    fixUrl,
+                                    width: 60,
+                                    height: 60,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) =>
+                                        Image.asset('lib/assets/pictures/icon.png', width: 60),
                                   )
-                                : Image.asset('lib/assets/pictures/icon.png', width: 60, height: 60, fit: BoxFit.cover),
+                                : Image.asset('lib/assets/pictures/icon.png', width: 60),
                           ),
                         ),
                       );
                     },
                   )
-                : const Center(child: Text('No badges earned yet', style: TextStyle(fontFamily: 'DIN_Next_Rounded'))),
+                : const Center(
+                    child: Text('No badges earned yet',
+                        style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.grey))),
           ),
         ],
       ),
@@ -328,16 +354,35 @@ class _ProfileState extends State<ProfileScreen> {
 
   Widget _buildMenuSection() {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Column(
         children: [
-          ProfileMenuWidget(title: "Trades", icon: LineAwesomeIcons.coins_solid, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TradeScreen(user: user!)))),
-          ProfileMenuWidget(title: "Update Profile", icon: LineAwesomeIcons.person_booth_solid, onPress: () async {
-            final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!, availableAvatars: availableAvatars)));
-            if (result == true) getUserData();
-          }),
-          ProfileMenuWidget(title: "Quick Access", icon: LineAwesomeIcons.accessible_icon, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const QuickAccessScreen()))),
-          ProfileMenuWidget(title: "About App", icon: LineAwesomeIcons.info_circle_solid, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutAppScreen()))),
+          ProfileMenuWidget(
+              title: "Trades",
+              icon: LineAwesomeIcons.coins_solid,
+              onPress: () => Navigator.push(
+                  context, MaterialPageRoute(builder: (context) => TradeScreen(user: user!)))),
+          ProfileMenuWidget(
+              title: "Update Profile",
+              icon: LineAwesomeIcons.person_booth_solid,
+              onPress: () async {
+                final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => UpdateProfile(
+                            user: user!, availableAvatars: availableAvatars)));
+                if (result == true) getUserData();
+              }),
+          ProfileMenuWidget(
+              title: "Quick Access",
+              icon: LineAwesomeIcons.accessible_icon,
+              onPress: () => Navigator.push(
+                  context, MaterialPageRoute(builder: (context) => const QuickAccessScreen()))),
+          ProfileMenuWidget(
+              title: "About App",
+              icon: LineAwesomeIcons.info_circle_solid,
+              onPress: () => Navigator.push(
+                  context, MaterialPageRoute(builder: (context) => const AboutAppScreen()))),
         ],
       ),
     );
@@ -350,44 +395,71 @@ class _ProfileState extends State<ProfileScreen> {
         width: double.infinity,
         child: ElevatedButton(
             onPressed: logout,
-            style: ElevatedButton.styleFrom(backgroundColor: GlobalVar.primaryColor, shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(vertical: 15)),
-            child: const Text("Log Out", style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white))),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: GlobalVar.primaryColor,
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(vertical: 15)),
+            child: const Text("Log Out",
+                style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white))),
       ),
     );
   }
 
   void _showBadgeDetails(BuildContext context, BadgeModel badge) async {
-    Course resCourse = await CourseService.getCourse(badge.courseId);
-    Chapter resChapter = await ChapterService.getChapterById(badge.chapterId);
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: badge.image != null ? Image.network(badge.image!, fit: BoxFit.cover) : Image.asset('lib/assets/pictures/icon.png'),
-            ),
-            const SizedBox(height: 16),
-            Text(badge.name, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor, fontSize: 18)),
-            Text('(${badge.type})', style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
-            const SizedBox(height: 8),
-            Text('Earned by completing ${resCourse.courseName} up to chapter ${resChapter.name}', textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
+    // Tampilkan loading dialog kecil atau pakai try catch
+    try {
+      Course resCourse = await CourseService.getCourse(badge.courseId);
+      Chapter resChapter = await ChapterService.getChapterById(badge.chapterId);
+      
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: badge.image != null 
+                  ? Image.network(badge.image!, fit: BoxFit.cover, height: 100) 
+                  : Image.asset('lib/assets/pictures/icon.png', height: 100),
+              ),
+              const SizedBox(height: 16),
+              Text(badge.name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'DIN_Next_Rounded',
+                      color: AppColors.primaryColor,
+                      fontSize: 18)),
+              Text('(${badge.type})', style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
+              const SizedBox(height: 12),
+              Text('Earned by completing ${resCourse.courseName} up to chapter ${resChapter.name}',
+                  textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 13)),
+            ],
+          ),
+          actions: [
+            SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close', style: TextStyle(color: Colors.white)))),
           ],
         ),
-        actions: [
-          SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor), onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white)))),
-        ],
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint("Error show badge: $e");
+    }
   }
 }
 
+// Widget Menu tetap sama
 class ProfileMenuWidget extends StatelessWidget {
-  const ProfileMenuWidget({super.key, required this.title, required this.icon, required this.onPress, this.endIcon = true, this.textColor});
+  const ProfileMenuWidget(
+      {super.key, required this.title, required this.icon, required this.onPress, this.endIcon = true, this.textColor});
   final String title;
   final IconData icon;
   final VoidCallback onPress;
@@ -399,11 +471,15 @@ class ProfileMenuWidget extends StatelessWidget {
     return ListTile(
       onTap: onPress,
       leading: Container(
-        width: 40, height: 40,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), color: AppColors.primaryColor.withAlpha(25)),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(100), color: AppColors.primaryColor.withOpacity(0.1)),
         child: Icon(icon, color: AppColors.primaryColor),
       ),
-      title: Text(title, style: TextStyle(color: textColor, fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.w600)),
+      title: Text(title,
+          style: TextStyle(
+              color: textColor, fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.w600)),
       trailing: endIcon ? const Icon(LineAwesomeIcons.angle_right_solid, size: 18.0, color: Colors.grey) : null,
     );
   }

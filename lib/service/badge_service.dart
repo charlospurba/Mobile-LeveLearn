@@ -1,24 +1,19 @@
 import 'dart:convert';
-
 import 'package:app/model/badge.dart';
 import 'package:app/model/user_badge.dart';
 import 'package:http/http.dart' as http;
-
 import '../global_var.dart';
 
 class BadgeService {
-
   static Future<List<BadgeModel>> getBadgeListCourseByCourseId(int courseId) async {
     try {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/course/$courseId/badges'));
-      final body = response.body;
-      final result = jsonDecode(body);
-      List<BadgeModel> list = List<BadgeModel>.from(
-          result.map((q) => BadgeModel.fromJson(q))
-      );
-      return list;
-    } catch(e){
-      throw Exception(e.toString());
+      // Deklarasi explisit List agar tidak dianggap Map oleh compiler JS
+      final List<dynamic> result = jsonDecode(response.body);
+      
+      return result.map((q) => BadgeModel.fromJson(q)).toList();
+    } catch (e) {
+      throw Exception("Error fetching badges: ${e.toString()}");
     }
   }
 
@@ -29,15 +24,18 @@ class BadgeService {
         "badgeId": badgeId,
         "isPurchased": false
       };
-      final response = await http.post(Uri.parse('${GlobalVar.baseUrl}/userbadge'), headers: {
-        'Content-type' : 'application/json; charset=utf-8',
-        'Accept': 'application/json',
-      } , body: jsonEncode(request));
+      final response = await http.post(
+        Uri.parse('${GlobalVar.baseUrl}/userbadge'), 
+        headers: {
+          'Content-type' : 'application/json; charset=utf-8',
+          'Accept': 'application/json',
+        }, 
+        body: jsonEncode(request)
+      );
 
-      final body = response.body;
-      final result = jsonDecode(body);
+      final result = jsonDecode(response.body);
       print(result['message']);
-    } catch(e) {
+    } catch (e) {
       throw Exception(e.toString());
     }
   }
@@ -45,34 +43,18 @@ class BadgeService {
   static Future<List<UserBadge>> getUserBadgeListByUserId(int userId) async {
     try {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$userId/badges'));
-      final result = jsonDecode(response.body);
+      final dynamic decodedResponse = jsonDecode(response.body);
 
-      if (result.isEmpty) {
-        throw Exception("No assignment found");
+      // Cek apakah response berupa List
+      if (decodedResponse is List) {
+        return decodedResponse.map((json) => UserBadge.fromJson(json)).toList();
+      } else {
+        // Jika backend mengirim data kosong dalam bentuk objek {} atau null
+        return [];
       }
-
-      List<UserBadge> list = List<UserBadge>.from(
-          result.map((q) => UserBadge.fromJson(q))
-      );
-
-      return list;
     } catch (e) {
-      throw Exception("Error fetching assessment: ${e.toString()}");
-    }
-  }
-
-  static Future<List<UserBadge>> getUserBadgeListWithStatusByUserId(int userId) async {
-    try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$userId/badges'));
-      final result = jsonDecode(response.body);
-
-      if (result.isEmpty) {
-        throw Exception("No assignment found");
-      }
-
-      return result;
-    } catch (e) {
-      throw Exception("Error fetching assessment: ${e.toString()}");
+      print("Badge Service Error: $e");
+      return []; // Kembalikan list kosong daripada melempar error agar profil tetap bisa terbuka
     }
   }
 
@@ -81,17 +63,13 @@ class BadgeService {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/badge/$badgeId'));
       final result = jsonDecode(response.body);
 
-      if (result.isEmpty) {
-        throw Exception("No assignment found");
+      if (result == null) {
+        throw Exception("Badge not found");
       }
 
-      BadgeModel badge = BadgeModel.fromJson(result);
-
-      return badge;
+      return BadgeModel.fromJson(result);
     } catch (e) {
-      throw Exception("Error fetching assessment: ${e.toString()}");
+      throw Exception("Error fetching badge: ${e.toString()}");
     }
   }
-
-
 }
