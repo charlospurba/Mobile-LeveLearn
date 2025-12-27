@@ -49,7 +49,7 @@ class _HomeState extends State<Homescreen> {
   @override
   void initState() {
     super.initState();
-    _initialLoad(); // Memanggil pemuatan data awal dan pengecekan streak
+    _initialLoad(); // Memicu pengecekan streak harian otomatis saat aplikasi dibuka
   }
 
   // Fungsi muat data awal dan sinkronisasi streak otomatis
@@ -60,10 +60,10 @@ class _HomeState extends State<Homescreen> {
     await getUserFromSharedPreference();
     
     if (idUser != 0) {
-      // 1. Jalankan pengecekan streak saat aplikasi dibuka
+      // 1. Jalankan sinkronisasi streak ke backend
       await handleStreakInteraction(); 
       
-      // 2. Muat data pendukung secara paralel
+      // 2. Muat data pendukung secara paralel untuk performa
       await Future.wait([
         getAllUser(),
         getEnrolledCourse(),
@@ -74,7 +74,7 @@ class _HomeState extends State<Homescreen> {
     if (mounted) setState(() => isLoading = false);
   }
 
-  // Mengambil data tantangan dari backend
+  // Mengambil data tantangan harian dari database
   Future<void> fetchChallenges() async {
     if (idUser == 0) return;
     try {
@@ -89,16 +89,15 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
-  // Logika pemicu streak dan sinkronisasi ke database
+  // Logika pemicu streak yang divalidasi oleh backend
   Future<void> handleStreakInteraction() async {
     if (idUser == 0) return;
 
     try {
-      // Mengambil data user terbaru dari server
+      // Ambil data user terbaru
       final currentUser = await UserService.getUserById(idUser);
       
-      // Mengirimkan data user ke backend untuk divalidasi tanggal interaksinya
-      // Backend akan menaikkan streak jika ini adalah hari baru yang berurutan
+      // Kirim ke backend untuk hitung penambahan/reset streak berdasarkan tanggal
       final updatedUser = await UserService.updateUser(currentUser); 
       
       if (mounted) {
@@ -107,7 +106,7 @@ class _HomeState extends State<Homescreen> {
           streakDays = updatedUser.streak;
         });
       }
-      debugPrint("Streak Disinkronkan: ${updatedUser.streak}");
+      debugPrint("Sistem: Streak hari ini adalah ${updatedUser.streak}");
     } catch (e) {
       debugPrint("Gagal sinkron streak: $e");
     }
@@ -117,9 +116,9 @@ class _HomeState extends State<Homescreen> {
     if (idUser == 0) return;
     try {
       final result = await CourseService.getEnrolledCourse(idUser).timeout(const Duration(seconds: 10));
-      
       allCourses = result;
 
+      pref = await SharedPreferences.getInstance();
       final lastId = pref.getInt('lastestSelectedCourse');
       Course? foundCourse;
 
@@ -221,7 +220,7 @@ class _HomeState extends State<Homescreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
-                    onRefresh: _initialLoad, // Swipe refresh akan memicu hitung ulang streak
+                    onRefresh: _initialLoad, // Swipe refresh memicu hitung ulang streak
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       child: Column(
@@ -230,13 +229,14 @@ class _HomeState extends State<Homescreen> {
                           _buildProfileHeader(),
                           _buildStatsDashboard(),
                           
+                          // Widget Tantangan Harian
                           ChallengeWidget(
                             challenges: myChallenges,
                             userId: idUser,
                             onTabChange: (index) => widget.updateIndex(index),
                             onRefresh: () {
-                              fetchChallenges(); // Refresh kartu setelah klaim hadiah
-                              getUserFromSharedPreference(); // Sinkronisasi poin di UI
+                              fetchChallenges(); 
+                              getUserFromSharedPreference(); 
                             },
                           ),
 
@@ -308,7 +308,7 @@ class _HomeState extends State<Homescreen> {
                   const SizedBox(width: 24),
                   RankStat(rank: rank, total: list.length),
                   const SizedBox(width: 24),
-                  StreakStat(days: streakDays), // Menampilkan hari streak secara real-time
+                  StreakStat(days: streakDays), // Menampilkan streak hari aktif secara akurat
                 ],
               ),
               const SizedBox(height: 25),
@@ -320,6 +320,7 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
+  // Perbaikan tampilan Explore Courses agar tidak berulang (looping) jika data hanya satu
   Widget _buildExploreSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -333,7 +334,13 @@ class _HomeState extends State<Homescreen> {
             ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet.")))
             : CarouselSlider.builder(
                 itemCount: allCourses.length,
-                options: CarouselOptions(height: 180, viewportFraction: 0.7, enlargeCenterPage: true),
+                options: CarouselOptions(
+                  height: 180, 
+                  viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, // Fokuskan jika hanya 1 kursus
+                  enlargeCenterPage: true,
+                  enableInfiniteScroll: allCourses.length > 1, // Matikan infinite scroll jika data hanya 1
+                  autoPlay: allCourses.length > 1,
+                ),
                 itemBuilder: (context, index, realIndex) {
                   final course = allCourses[index];
                   return GestureDetector(
