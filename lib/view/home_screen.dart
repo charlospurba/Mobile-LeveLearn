@@ -50,13 +50,11 @@ class _HomeState extends State<Homescreen> {
   List<UserBadge>? userBadges = [];
   int streakDays = 0;
 
-  // Variabel Profile Adaptif (Hasil Klasifikasi GMM)
+  // Variabel Profile Adaptif hasil klasifikasi GMM
   String userType = "Achievers";
 
   // --- KONFIGURASI NETWORK ---
-  // Ganti IP ini dengan IP yang muncul di terminal Node.js Anda (On LAN)
-  // Contoh: 192.168.1.15 atau gunakan 10.0.2.2 untuk emulator
-  final String apiBaseUrl = "http://10.0.2.2:7000/api";
+  final String apiBaseUrl = "http://172.27.80.114:7000/api";
 
   @override
   void initState() {
@@ -74,39 +72,39 @@ class _HomeState extends State<Homescreen> {
       await getUserFromSharedPreference();
       
       if (idUser != 0) {
-        // 1. Catat Log Akses (Aksi Player)
-        await ActivityService.sendLog(
+        // 1. Kirim Log Akses secara asynchronous
+        ActivityService.sendLog(
           userId: idUser, 
           type: 'FREQUENT_ACCESS', 
           value: 1.0
-        );
+        ).catchError((e) => debugPrint("Silently failed to log: $e"));
 
-        // 2. Load Data Dasar Secara Berurutan (Mencegah Backend Overload)
-        await handleStreakInteraction(); 
-        await getAllUser();
-        await getEnrolledCourse();
-        await fetchChallenges(); 
+        // 2. Load Data UI dasar secara paralel
+        await Future.wait<dynamic>([
+          handleStreakInteraction(),
+          getAllUser(),
+          getEnrolledCourse(),
+          fetchChallenges(),
+        ]);
         
-        // 3. Ambil Profil ML (Terakhir karena prosesnya paling berat)
+        // 3. Jeda strategis agar BE selesai memproses ML di background
+        await Future.delayed(const Duration(milliseconds: 1500));
+
+        // 4. Ambil Profil Adaptif terbaru
         await fetchAdaptiveProfile(); 
       }
     } catch (e) {
-      debugPrint("Error during initial load: $e");
+      debugPrint("Error loading home data: $e");
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
   }
 
-  // Fungsi Utama: Sinkronisasi dengan GMM ML Service via Node.js
   Future<void> fetchAdaptiveProfile() async {
     final String url = "$apiBaseUrl/user/adaptive/$idUser";
-    
     try {
-      debugPrint("Fetching Adaptive Profile from: $url");
-      
-      // Menggunakan timeout 20 detik karena Node.js harus menunggu respon Python
       final response = await http.get(Uri.parse(url))
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 8));
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -114,15 +112,15 @@ class _HomeState extends State<Homescreen> {
           setState(() {
             userType = data['currentCluster'] ?? "Achievers";
           });
-          debugPrint("User Cluster Updated: $userType");
+          debugPrint("UI Adaptif Berhasil Disinkronkan: $userType");
         }
       }
-    } on TimeoutException catch (_) {
-      debugPrint("Koneksi Timeout: Server terlalu lama merespon ML.");
     } catch (e) {
-      debugPrint("Koneksi Gagal: Pastikan Server Aktif & IP Benar ($e)");
+      debugPrint("Gagal sinkron profil adaptif: $e");
     }
   }
+
+  // --- REUSABLE SERVICE CALLS ---
 
   Future<void> fetchChallenges() async {
     if (idUser == 0) return;
@@ -232,7 +230,7 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
-  // --- UI WIDGETS ---
+  // --- UI BUILDING ---
 
   @override
   Widget build(BuildContext context) {
@@ -257,7 +255,7 @@ class _HomeState extends State<Homescreen> {
                         children: [
                           const SizedBox(height: 50),
                           _buildProfileHeader(),
-                          _buildAdaptiveGreeting(), // Widget Dinamis GMM
+                          _buildAdaptiveGreeting(), 
                           _buildStatsDashboard(),
                           
                           ChallengeWidget(
@@ -267,7 +265,7 @@ class _HomeState extends State<Homescreen> {
                             onRefresh: () {
                               fetchChallenges(); 
                               getUserFromSharedPreference(); 
-                              fetchAdaptiveProfile(); 
+                              Future.delayed(const Duration(seconds: 1), () => fetchAdaptiveProfile());
                             },
                           ),
 
@@ -288,35 +286,100 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
-  Widget _buildBackgroundVector() {
-    return Positioned(
-      bottom: 0,
-      right: 0,
-      child: Opacity(
-        opacity: 0.2,
-        child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200),
+  Widget _buildProfileHeader() {
+    // Menyesuaikan warna dan icon label berdasarkan klaster
+    Color clusterColor = Colors.blue;
+    IconData clusterIcon = Icons.stars;
+
+    if (userType == "Players") {
+      clusterColor = Colors.orange;
+      clusterIcon = Icons.videogame_asset;
+    } else if (userType == "Free Spirits") {
+      clusterColor = Colors.teal;
+      clusterIcon = Icons.explore;
+    } else if (userType == "Disruptors") {
+      clusterColor = Colors.redAccent;
+      clusterIcon = Icons.bolt;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Hello! Happy Learning', 
+                  style: TextStyle(color: AppColors.primaryColor, fontSize: 14, fontFamily: 'DIN_Next_Rounded')),
+                Text(name, 
+                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded')),
+                const SizedBox(height: 6),
+                // --- LABEL CLUSTER DI BAWAH NAMA ---
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: clusterColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: clusterColor.withOpacity(0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(clusterIcon, size: 14, color: clusterColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        userType.toUpperCase(),
+                        style: TextStyle(
+                          color: clusterColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                          fontFamily: 'DIN_Next_Rounded'
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => widget.updateIndex(4),
+            child: CircleAvatar(
+              radius: 30,
+              backgroundColor: Colors.grey[200],
+              backgroundImage: user?.image != null && user?.image != "" ? NetworkImage(user!.image!) : null,
+              child: user?.image == null || user?.image == "" ? const Icon(Icons.person, size: 30) : null,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // HEADER ADAPTIF: Berubah berdasarkan Cluster GMM
   Widget _buildAdaptiveGreeting() {
     String greeting = "Semangat belajar hari ini!";
     IconData icon = Icons.wb_sunny;
     Color color = AppColors.primaryColor;
 
     if (userType == "Achievers") {
-      greeting = "Siap memecahkan rekor nilai kuis?";
+      greeting = "Siap memecahkan rekor nilai kuis hari ini?";
       icon = Icons.emoji_events;
       color = Colors.blue;
     } else if (userType == "Players") {
-      greeting = "Ada hadiah baru menantimu!";
+      greeting = "Ada hadiah baru! Ambil sekarang di menu tantangan.";
       icon = Icons.redeem;
       color = Colors.orange;
     } else if (userType == "Free Spirits") {
-      greeting = "Jelajahi materi baru yuk!";
+      greeting = "Jelajahi materi baru dan temukan pengetahuan unik!";
       icon = Icons.explore;
       color = Colors.teal;
+    } else if (userType == "Disruptors") {
+      greeting = "Tetap fokus pada materi dan raih peringkat teratas!";
+      icon = Icons.bolt;
+      color = Colors.redAccent;
     }
 
     return Padding(
@@ -348,29 +411,13 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
-  Widget _buildProfileHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Hello! Happy Learning', style: TextStyle(color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded')),
-              Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded')),
-            ],
-          ),
-          GestureDetector(
-            onTap: () => widget.updateIndex(4),
-            child: CircleAvatar(
-              radius: 25,
-              backgroundColor: Colors.grey[200],
-              backgroundImage: user?.image != null && user?.image != "" ? NetworkImage(user!.image!) : null,
-              child: user?.image == null || user?.image == "" ? const Icon(Icons.person) : null,
-            ),
-          ),
-        ],
+  Widget _buildBackgroundVector() {
+    return Positioned(
+      bottom: 0,
+      right: 0,
+      child: Opacity(
+        opacity: 0.2,
+        child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200),
       ),
     );
   }
