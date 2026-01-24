@@ -1,6 +1,7 @@
 import 'package:app/model/trade.dart';
 import 'package:app/model/user_trade.dart';
 import 'package:app/service/trade_service.dart';
+import 'package:app/service/activity_service.dart'; // IMPORT BARU
 import 'package:app/utils/colors.dart';
 import 'package:app/view/main_screen.dart';
 import 'package:app/view/trade_detail_screen.dart';
@@ -25,6 +26,15 @@ class _TradeScreenState extends State<TradeScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // LOG TRIGGER: FREE SPIRITS (Exploration Events)
+    // Mencatat bahwa user tertarik menjelajahi fitur di luar materi kursus
+    ActivityService.sendLog(
+      userId: widget.user.id, 
+      type: 'EXPLORATION_EVENTS', 
+      value: 1.0
+    );
+    
     fetchData();
   }
 
@@ -53,7 +63,6 @@ class _TradeScreenState extends State<TradeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Membagi list berdasarkan judul (Avatar vs Reward)
     final avatarTrades = trades.where((t) => t.title.toLowerCase().contains('avatar')).toList();
     final rewardTrades = trades.where((t) => !t.title.toLowerCase().contains('avatar')).toList();
 
@@ -125,7 +134,7 @@ class _TradeScreenState extends State<TradeScreen> {
               : const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (context) => TradeDetailScreen(trade: trade, user: widget.user)));
-              fetchData(); // Refresh data saat kembali
+              fetchData(); 
             },
           ),
         );

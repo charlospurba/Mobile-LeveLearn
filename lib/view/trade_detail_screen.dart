@@ -1,10 +1,10 @@
-// lib/view/trade_detail_screen.dart
 import 'package:app/model/trade.dart';
 import 'package:app/model/user_badge.dart';
 import 'package:app/service/badge_service.dart';
 import 'package:app/service/trade_service.dart';
 import 'package:app/service/user_badge_service.dart';
 import 'package:app/service/user_service.dart';
+import 'package:app/service/activity_service.dart'; // IMPORT BARU
 import 'package:app/view/whatadeal_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -98,6 +98,15 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       bool success = await TradeService.createUserTrade(user.id, widget.trade.id);
       
       if (success) {
+        // LOG TRIGGER: PLAYERS (Reward Behavior Proxy)
+        // User telah menukar poin/badge untuk mendapatkan item gamifikasi
+        ActivityService.sendLog(
+          userId: user.id, 
+          type: 'REWARD_BEHAVIOR_PROXY', 
+          value: 1.0,
+          metadata: {"item_title": widget.trade.title, "cost": reqPoint}
+        );
+
         user.points = (user.points ?? 0) - reqPoint;
         await UserService.updateUserPoints(user);
 
@@ -119,7 +128,6 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
     }
   }
 
-  // WIDGET HELPER UNTUK MENAMPILKAN GAMBAR DINAMIS
   Widget _buildTradeImage() {
     String path = widget.trade.image;
     
@@ -181,7 +189,6 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                   Text(widget.trade.description, style: TextStyle(fontSize: 15, color: Colors.grey[600], height: 1.5)),
                   const SizedBox(height: 30),
                   
-                  // Card Statistik Poin
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -220,7 +227,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                     const Text("Pilih Badge untuk Ditukarkan:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                     const SizedBox(height: 12),
                     userOwnedBadges.isEmpty 
-                      ? Text("Maaf, Anda tidak memiliki badge ${widget.trade.requiredBadgeType}.", style: const TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w500))
+                      ? const Text("Maaf, Anda tidak memiliki badge yang diperlukan.", style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.w500))
                       : Wrap(
                           spacing: 10,
                           runSpacing: 10,

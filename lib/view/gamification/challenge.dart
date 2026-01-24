@@ -1,8 +1,7 @@
-// lib/view/gamification/challenge.dart
-
 import 'package:flutter/material.dart';
 import '../../model/user_challenge.dart';
 import '../../service/user_service.dart';
+import '../../service/activity_service.dart'; // IMPORT AKTIVITAS
 import '../../utils/colors.dart';
 
 class ChallengeWidget extends StatelessWidget {
@@ -29,7 +28,7 @@ class ChallengeWidget extends StatelessWidget {
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
-            'Quest & Challenge',
+            'Challenge',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -39,7 +38,7 @@ class ChallengeWidget extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 160, // Sedikit lebih tinggi untuk kenyamanan
+          height: 160,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -64,8 +63,9 @@ class ChallengeWidget extends StatelessWidget {
       child: Card(
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: InkWell( // Memungkinkan klik pada kartu
-          onTap: isDone ? null : () => onTabChange(2), // Redirect ke My Course
+        child: InkWell(
+          // Tombol disabled jika sudah selesai (untuk navigasi)
+          onTap: isDone ? null : () => onTabChange(2), 
           borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -101,12 +101,15 @@ class ChallengeWidget extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const Spacer(),
+                
+                // LOGIKA TOMBOL BERDASARKAN RULES
                 if (isDone && !isClaimed)
                   SizedBox(
                     width: double.infinity,
                     height: 35,
                     child: ElevatedButton(
-                      onPressed: () => _claimReward(context, item.id),
+                      // TOMBOL AKTIF SAAT SELESAI
+                      onPressed: () => _handleClaimReward(context, item.id),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         elevation: 0,
@@ -117,6 +120,7 @@ class ChallengeWidget extends StatelessWidget {
                     ),
                   )
                 else if (isClaimed)
+                  // RULES: TETAP TAMPIL TAPI TOMBOL DISABLE
                   const Center(
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 8.0),
@@ -125,12 +129,14 @@ class ChallengeWidget extends StatelessWidget {
                         children: [
                           Icon(Icons.done_all, color: Colors.green, size: 16),
                           SizedBox(width: 4),
-                          Text("Hadiah Sudah Diklaim", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text("Hadiah Sudah Diklaim", 
+                            style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
                         ],
                       ),
                     ),
                   )
                 else
+                  // TAMPILAN PROGRESS BAR JIKA BELUM SELESAI
                   Column(
                     children: [
                       ClipRRect(
@@ -160,10 +166,22 @@ class ChallengeWidget extends StatelessWidget {
     );
   }
 
-  void _claimReward(BuildContext context, int userChallengeId) async {
+  // LOGIKA KLAIM DAN LOGGING AKTIVITAS
+  void _handleClaimReward(BuildContext context, int userChallengeId) async {
+    // 1. LOG TRIGGER: PLAYERS (Reward-like behavior proxy)
+    // Mencatat bahwa user aktif mengejar/mengambil reward
+    await ActivityService.sendLog(
+      userId: userId, 
+      type: 'REWARD_BEHAVIOR_PROXY', 
+      value: 1.0,
+      metadata: {"userChallengeId": userChallengeId}
+    );
+
+    // 2. PROSES KLAIM KE API
     final success = await UserService.claimChallengeReward(userId, userChallengeId);
+    
     if (success) {
-      onRefresh();
+      onRefresh(); // Memicu update data di Home Screen
     }
   }
 }

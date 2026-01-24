@@ -1,20 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:app/model/user.dart';
 import 'package:app/model/user_challenge.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
-import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+// Import Service & Utils
 import '../model/course.dart';
 import '../model/user_badge.dart';
 import '../service/badge_service.dart';
 import '../service/course_service.dart';
 import '../service/user_service.dart';
+import '../service/activity_service.dart'; 
 import '../utils/colors.dart';
 import 'login_screen.dart';
 
-// IMPORT KOMPONEN GAMIFIKASI
+// Import Komponen Gamifikasi
 import 'package:app/view/gamification/badge_stat.dart';
 import 'package:app/view/gamification/course_stat.dart';
 import 'package:app/view/gamification/rank_stat.dart';
@@ -33,9 +36,10 @@ class Homescreen extends StatefulWidget {
 }
 
 class _HomeState extends State<Homescreen> {
+  // --- STATE VARIABLES ---
   List<Course> allCourses = [];
   List<Student> list = [];
-  List<UserChallenge> myChallenges = [];
+  List<UserChallenge> myChallenges = []; 
   String name = '';
   late SharedPreferences pref;
   Student? user;
@@ -46,67 +50,101 @@ class _HomeState extends State<Homescreen> {
   List<UserBadge>? userBadges = [];
   int streakDays = 0;
 
+  // Variabel Profile Adaptif (Hasil Klasifikasi GMM)
+  String userType = "Achievers";
+
+  // --- KONFIGURASI NETWORK ---
+  // Ganti IP ini dengan IP yang muncul di terminal Node.js Anda (On LAN)
+  // Contoh: 192.168.1.15 atau gunakan 10.0.2.2 untuk emulator
+  final String apiBaseUrl = "http://10.0.2.2:7000/api";
+
   @override
   void initState() {
     super.initState();
-    _initialLoad(); // Memicu pengecekan streak harian otomatis saat aplikasi dibuka
+    _initialLoad(); 
   }
 
-  // Fungsi muat data awal dan sinkronisasi streak otomatis
+  // --- LOGIC FUNCTIONS ---
+
   Future<void> _initialLoad() async {
     if (!mounted) return;
     setState(() => isLoading = true);
 
-    await getUserFromSharedPreference();
-    
-    if (idUser != 0) {
-      // 1. Jalankan sinkronisasi streak ke backend
-      await handleStreakInteraction(); 
+    try {
+      await getUserFromSharedPreference();
       
-      // 2. Muat data pendukung secara paralel untuk performa
-      await Future.wait([
-        getAllUser(),
-        getEnrolledCourse(),
-        fetchChallenges(),
-      ]);
+      if (idUser != 0) {
+        // 1. Catat Log Akses (Aksi Player)
+        await ActivityService.sendLog(
+          userId: idUser, 
+          type: 'FREQUENT_ACCESS', 
+          value: 1.0
+        );
+
+        // 2. Load Data Dasar Secara Berurutan (Mencegah Backend Overload)
+        await handleStreakInteraction(); 
+        await getAllUser();
+        await getEnrolledCourse();
+        await fetchChallenges(); 
+        
+        // 3. Ambil Profil ML (Terakhir karena prosesnya paling berat)
+        await fetchAdaptiveProfile(); 
+      }
+    } catch (e) {
+      debugPrint("Error during initial load: $e");
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
-    
-    if (mounted) setState(() => isLoading = false);
   }
 
-  // Mengambil data tantangan harian dari database
+  // Fungsi Utama: Sinkronisasi dengan GMM ML Service via Node.js
+  Future<void> fetchAdaptiveProfile() async {
+    final String url = "$apiBaseUrl/user/adaptive/$idUser";
+    
+    try {
+      debugPrint("Fetching Adaptive Profile from: $url");
+      
+      // Menggunakan timeout 20 detik karena Node.js harus menunggu respon Python
+      final response = await http.get(Uri.parse(url))
+          .timeout(const Duration(seconds: 20));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            userType = data['currentCluster'] ?? "Achievers";
+          });
+          debugPrint("User Cluster Updated: $userType");
+        }
+      }
+    } on TimeoutException catch (_) {
+      debugPrint("Koneksi Timeout: Server terlalu lama merespon ML.");
+    } catch (e) {
+      debugPrint("Koneksi Gagal: Pastikan Server Aktif & IP Benar ($e)");
+    }
+  }
+
   Future<void> fetchChallenges() async {
     if (idUser == 0) return;
     try {
       final result = await UserService.getUserChallenges(idUser);
-      if (mounted) {
-        setState(() {
-          myChallenges = result;
-        });
-      }
+      if (mounted) setState(() => myChallenges = result);
     } catch (e) {
       debugPrint("Gagal load challenges: $e");
     }
   }
 
-  // Logika pemicu streak yang divalidasi oleh backend
   Future<void> handleStreakInteraction() async {
     if (idUser == 0) return;
-
     try {
-      // Ambil data user terbaru
       final currentUser = await UserService.getUserById(idUser);
-      
-      // Kirim ke backend untuk hitung penambahan/reset streak berdasarkan tanggal
       final updatedUser = await UserService.updateUser(currentUser); 
-      
       if (mounted) {
         setState(() {
           user = updatedUser;
           streakDays = updatedUser.streak;
         });
       }
-      debugPrint("Sistem: Streak hari ini adalah ${updatedUser.streak}");
     } catch (e) {
       debugPrint("Gagal sinkron streak: $e");
     }
@@ -115,7 +153,7 @@ class _HomeState extends State<Homescreen> {
   Future<void> getEnrolledCourse() async {
     if (idUser == 0) return;
     try {
-      final result = await CourseService.getEnrolledCourse(idUser).timeout(const Duration(seconds: 10));
+      final result = await CourseService.getEnrolledCourse(idUser);
       allCourses = result;
 
       pref = await SharedPreferences.getInstance();
@@ -124,10 +162,7 @@ class _HomeState extends State<Homescreen> {
 
       if (lastId != null) {
         for (var c in allCourses) {
-          if (c.id == lastId) {
-            foundCourse = c;
-            break;
-          }
+          if (c.id == lastId) { foundCourse = c; break; }
         }
       }
 
@@ -151,7 +186,7 @@ class _HomeState extends State<Homescreen> {
 
   Future<void> getAllUser() async {
     try {
-      final result = await UserService.getAllUser().timeout(const Duration(seconds: 10));
+      final result = await UserService.getAllUser();
       if (mounted) {
         setState(() {
           list = result.where((u) => u.role == 'STUDENT').toList();
@@ -197,19 +232,14 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
+  // --- UI WIDGETS ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Opacity(
-              opacity: 0.2,
-              child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200),
-            ),
-          ),
+          _buildBackgroundVector(),
           Container(
             decoration: const BoxDecoration(
               image: DecorationImage(
@@ -220,23 +250,24 @@ class _HomeState extends State<Homescreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
-                    onRefresh: _initialLoad, // Swipe refresh memicu hitung ulang streak
+                    onRefresh: _initialLoad, 
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       child: Column(
                         children: [
                           const SizedBox(height: 50),
                           _buildProfileHeader(),
+                          _buildAdaptiveGreeting(), // Widget Dinamis GMM
                           _buildStatsDashboard(),
                           
-                          // Widget Tantangan Harian
                           ChallengeWidget(
-                            challenges: myChallenges,
+                            challenges: myChallenges, 
                             userId: idUser,
                             onTabChange: (index) => widget.updateIndex(index),
                             onRefresh: () {
                               fetchChallenges(); 
                               getUserFromSharedPreference(); 
+                              fetchAdaptiveProfile(); 
                             },
                           ),
 
@@ -253,6 +284,66 @@ class _HomeState extends State<Homescreen> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBackgroundVector() {
+    return Positioned(
+      bottom: 0,
+      right: 0,
+      child: Opacity(
+        opacity: 0.2,
+        child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200),
+      ),
+    );
+  }
+
+  // HEADER ADAPTIF: Berubah berdasarkan Cluster GMM
+  Widget _buildAdaptiveGreeting() {
+    String greeting = "Semangat belajar hari ini!";
+    IconData icon = Icons.wb_sunny;
+    Color color = AppColors.primaryColor;
+
+    if (userType == "Achievers") {
+      greeting = "Siap memecahkan rekor nilai kuis?";
+      icon = Icons.emoji_events;
+      color = Colors.blue;
+    } else if (userType == "Players") {
+      greeting = "Ada hadiah baru menantimu!";
+      icon = Icons.redeem;
+      color = Colors.orange;
+    } else if (userType == "Free Spirits") {
+      greeting = "Jelajahi materi baru yuk!";
+      icon = Icons.explore;
+      color = Colors.teal;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                greeting,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold, 
+                  color: color, 
+                  fontFamily: 'DIN_Next_Rounded'
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -308,7 +399,7 @@ class _HomeState extends State<Homescreen> {
                   const SizedBox(width: 24),
                   RankStat(rank: rank, total: list.length),
                   const SizedBox(width: 24),
-                  StreakStat(days: streakDays), // Menampilkan streak hari aktif secara akurat
+                  StreakStat(days: streakDays), 
                 ],
               ),
               const SizedBox(height: 25),
@@ -320,7 +411,6 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
-  // Perbaikan tampilan Explore Courses agar tidak berulang (looping) jika data hanya satu
   Widget _buildExploreSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,9 +426,9 @@ class _HomeState extends State<Homescreen> {
                 itemCount: allCourses.length,
                 options: CarouselOptions(
                   height: 180, 
-                  viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, // Fokuskan jika hanya 1 kursus
+                  viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, 
                   enlargeCenterPage: true,
-                  enableInfiniteScroll: allCourses.length > 1, // Matikan infinite scroll jika data hanya 1
+                  enableInfiniteScroll: allCourses.length > 1, 
                   autoPlay: allCourses.length > 1,
                 ),
                 itemBuilder: (context, index, realIndex) {
@@ -346,11 +436,7 @@ class _HomeState extends State<Homescreen> {
                   return GestureDetector(
                     onTap: () {
                       pref.setInt('lastestSelectedCourse', course.id);
-                      if (mounted) {
-                        setState(() {
-                          lastestCourse = course;
-                        });
-                      }
+                      if (mounted) setState(() { lastestCourse = course; });
                       widget.updateIndex(2);
                     },
                     child: Container(

@@ -6,6 +6,7 @@ import '../model/learning_material.dart';
 import '../service/chapter_service.dart';
 import '../service/user_chapter_service.dart';
 import '../service/user_service.dart';
+import '../service/activity_service.dart'; // IMPORT BARU
 import '../utils/colors.dart';
 
 class MaterialScreen extends StatefulWidget {
@@ -33,12 +34,17 @@ class _MaterialScreenState extends State<MaterialScreen> {
   bool showDialogMaterialOnce = false;
   late ChapterStatus status;
 
+  // LOG TRIGGER: FREE SPIRITS (Session Duration)
+  final Stopwatch _timer = Stopwatch(); 
+
   @override
   void initState() {
     status = widget.status;
     showDialogMaterialOnce = widget.status.materialDone;
     progressValue = widget.status.materialDone ? 1.0 : 0;
     
+    _timer.start(); // Mulai menghitung durasi belajar
+
     getMaterial(widget.status.chapterId);
     
     super.initState();
@@ -48,6 +54,16 @@ class _MaterialScreenState extends State<MaterialScreen> {
 
   @override
   void dispose() {
+    _timer.stop();
+    
+    // LOG TRIGGER: Kirim durasi membaca materi ke backend dalam satuan detik
+    ActivityService.sendLog(
+      userId: widget.status.userId, 
+      type: 'SESSION_DURATION', 
+      value: _timer.elapsed.inSeconds.toDouble(),
+      metadata: {"chapterId": widget.status.chapterId}
+    );
+
     _scrollController.removeListener(updateProgressMaterial);
     _scrollController.dispose();
     super.dispose();
@@ -62,7 +78,6 @@ class _MaterialScreenState extends State<MaterialScreen> {
     }
   }
 
-  // Fungsi untuk memantau scroll user
   void updateProgressMaterial() {
     if (_scrollController.position.maxScrollExtent <= 0) return;
 
@@ -80,12 +95,10 @@ class _MaterialScreenState extends State<MaterialScreen> {
         showDialogMaterialOnce = true;
       });
 
-      // Menampilkan dialog sukses
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showCompletionDialog(context, "Yeay! Kamu berhasil menyelesaikan Materi. Ayo lanjutkan ke bagian Assessment.", false, false);
       });
 
-      // TRIGGER SINKRONISASI KE BACKEND
       _triggerMaterialChallenge();
     } else {
       setState(() {
@@ -94,21 +107,13 @@ class _MaterialScreenState extends State<MaterialScreen> {
     }
   }
 
-  // FUNGSI KRUSIAL: Menghubungkan aksi scroll ke sistem Challenge
   void _triggerMaterialChallenge() async {
     try {
-      // 1. Update status lokal
       status.materialDone = true;
-      
-      // 2. Beritahu Parent ChapterScreen agar UI Assessment terbuka
       widget.updateProgress(true);
       widget.updateStatus(status);
 
-      // 3. Simpan status material ke tabel user_chapters
       await UserChapterService.updateChapterStatus(status.id, status);
-
-      // 4. TRIGGER CHALLENGE: Beritahu backend untuk menambah progres 'COMPLETE_CHAPTER'
-      // Ini akan menambah progres tantangan seperti "Baca 1 Materi" (ID 101) atau "Selesaikan 2 Materi" (ID 105)
       await UserService.triggerChallengeManual(status.userId, 'COMPLETE_CHAPTER');
       
       debugPrint(">>> Sinyal Challenge Materi Dikirim! <<<");
@@ -184,7 +189,7 @@ class _MaterialScreenState extends State<MaterialScreen> {
                   children: [
                     const SizedBox(height: 16),
                     _buildHTMLContent(material!.content),
-                    const SizedBox(height: 50), // Ruang ekstra di bawah agar scroll bisa mentok
+                    const SizedBox(height: 50), 
                   ],
                 ),
               ),

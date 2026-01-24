@@ -1,0 +1,2 @@
+C:/Users/asus/Documents/Mobile/android/app/.cxx/Debug/3r155s43/x86/CMakeFiles/edit_cache.dir
+C:/Users/asus/Documents/Mobile/android/app/.cxx/Debug/3r155s43/x86/CMakeFiles/rebuild_cache.dir

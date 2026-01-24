@@ -9,6 +9,7 @@ import '../model/user.dart';
 import '../service/chapter_service.dart';
 import '../service/user_chapter_service.dart';
 import '../service/user_service.dart';
+import '../service/activity_service.dart'; // IMPORT BARU
 import '../utils/colors.dart';
 
 class AssessmentScreen extends StatefulWidget {
@@ -150,7 +151,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     );
   }
 
-  // --- LOGIKA UTAMA SINKRONISASI AKURAT ---
   void _showQuizResults() async {
     if (_calculateComplete) return;
 
@@ -164,72 +164,63 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     double totalScoreCalculated = 0;
     double rangeScore = 100 / (question?.questions.length ?? 1);
 
-    List<Future<void>> calculationTasks = [];
-
     for (int index = 0; index < (question?.questions.length ?? 0); index++) {
       Question q = question!.questions[index];
       String userAns = q.selectedAnswer.toString().trim().toLowerCase();
       String correctAns = q.correctedAnswer.toString().trim().toLowerCase();
 
-      if (q.type != 'EY') {
-        if (userAns == correctAns) {
-          tempCorrect++;
-          totalScoreCalculated += rangeScore;
-          question!.questions[index].isCorrect = true;
-        }
-      } else {
-        calculationTasks.add(
-          ChapterService.checkSimiliarity(q.correctedAnswer, q.selectedAnswer)
-              .timeout(const Duration(seconds: 2))
-              .then((sim) {
-            totalScoreCalculated += (rangeScore * sim);
-            if (sim > 0.5) {
-              tempCorrect++;
-              question!.questions[index].isCorrect = true;
-            }
-          }).catchError((e) => debugPrint("Similarity check failed: $e")),
-        );
+      if (userAns == correctAns) {
+        tempCorrect++;
+        totalScoreCalculated += rangeScore;
+        question!.questions[index].isCorrect = true;
       }
     }
-
-    if (calculationTasks.isNotEmpty) await Future.wait(calculationTasks);
 
     int finalScore = totalScoreCalculated.round();
     if (finalScore > 100) finalScore = 100;
 
-    if (mounted) {
-      setState(() {
-        point = finalScore;
-        correctAnswer = tempCorrect;
-        _calculateComplete = true;
-        _assessmentFinished = true;
-      });
-    }
-
     try {
+      // LOG TRIGGER: ACHIEVERS (Quiz Score)
+      ActivityService.sendLog(
+        userId: user!.id, 
+        type: 'QUIZ_SCORE', 
+        value: finalScore.toDouble()
+      );
+
+      // LOG TRIGGER: DISRUPTORS (Anomaly Patterns - Selesai sangat cepat skor sempurna)
+      if (_secondsRemaining > 25 && finalScore == 100) {
+        ActivityService.sendLog(
+          userId: user!.id, 
+          type: 'ANOMALY_PATTERNS', 
+          value: 1.0,
+          metadata: {"reason": "extremely_fast_completion"}
+        );
+      }
+
       user!.points = (user!.points ?? 0) + finalScore;
       status.assessmentDone = true;
       status.assessmentGrade = finalScore;
       status.assessmentAnswer = question!.questions.map((q) => q.selectedAnswer).toList();
 
-      // 1. Simpan data progres chapter & penambahan poin total
       await Future.wait([
         UserService.updateUserPoints(user!),
         UserChapterService.updateChapterStatus(status.id, status),
       ]);
 
-      // 2. TRIGGER CHALLENGE SECARA AKURAT
-      // Mengirim field 'lastScore' agar backend bisa memicu tantangan 'PERFECT_SCORE' jika nilainya 100
-      Map<String, dynamic> challengeData = {
-        "points": user!.points,
-        "lastScore": finalScore 
-      };
-      
-      // Menggunakan fungsi update data kustom di UserService
-      await UserService.updateUserRaw(user!.id, challengeData);
+      await UserService.triggerChallengeManual(user!.id, 'FINISH_ASSESSMENT');
+
+      if (finalScore == 100) {
+        await UserService.triggerChallengeManual(user!.id, 'PERFECT_SCORE');
+      }
 
       if (mounted) {
-        Navigator.pop(context); // Tutup loading
+        Navigator.pop(context);
+        setState(() {
+          point = finalScore;
+          correctAnswer = tempCorrect;
+          _calculateComplete = true;
+          _assessmentFinished = true;
+        });
         widget.updateStatus(status);
         widget.updateAssessmentFinished(true);
         widget.updateAssessmentStarted(false);
@@ -237,7 +228,7 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      debugPrint("Gagal sinkronisasi Assessment: $e");
+      debugPrint(">>> GAGAL SINKRONISASI ASSESSMENT: $e <<<");
     }
   }
 

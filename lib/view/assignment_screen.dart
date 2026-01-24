@@ -8,6 +8,7 @@ import 'package:app/service/chapter_service.dart';
 import 'package:app/service/user_chapter_service.dart';
 import 'package:app/service/user_service.dart';
 import 'package:app/service/user_course_service.dart';
+import 'package:app/service/activity_service.dart'; // IMPORT BARU
 import 'package:app/utils/colors.dart';
 import 'package:app/view/main_screen.dart';
 import 'package:dotted_border/dotted_border.dart';
@@ -57,7 +58,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
   double downloadProgress = 0.0;
   PlatformFile? file;
   String lastestSubmissionUrl = '';
-  bool _isSubmitting = false; // State untuk mengontrol loading
+  bool _isSubmitting = false; 
   int idBadge = 0;
   int chLength = 0;
   bool complete = false;
@@ -91,10 +92,18 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
   Future<void> _handleSubmit() async {
     if (file == null) return;
 
-    setState(() => _isSubmitting = true); // Mulai animasi loading
+    setState(() => _isSubmitting = true);
 
     try {
-      // 1. Logika Hitung Poin & Progress
+      // LOG TRIGGER: ACHIEVERS (Completion Rate)
+      // Memicu sinyal penyelesaian chapter penuh
+      ActivityService.sendLog(
+        userId: user!.id, 
+        type: 'COMPLETION_RATE', 
+        value: 1.0,
+        metadata: {"chapterId": status.chapterId}
+      );
+
       Duration difference = status.timeStarted.difference(DateTime.now());
       if (!status.assignmentDone && !complete) {
         user?.points = (user?.points ?? 0) + _calculatePoint(difference.inMinutes.abs());
@@ -110,11 +119,9 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         user?.badges = (user?.badges ?? 0) + 1;
       }
 
-      // 2. PROSES UPLOAD KE SUPABASE
       final filename = '${file!.name.split('.').first}_${status.userId}_${status.chapterId}_${DateTime.now().millisecondsSinceEpoch}.${file!.extension}';
       final path = 'uploads/$filename';
       
-      // Mengambil bytes secara aman
       Uint8List bytes;
       if (kIsWeb) {
         bytes = file!.bytes!;
@@ -122,7 +129,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         bytes = await File(file!.path!).readAsBytes();
       }
 
-      // Pastikan nama bucket 'assignment' (lowercase) sesuai Dashboard Supabase
       await Supabase.instance.client.storage.from('assignment').uploadBinary(
         path, 
         bytes,
@@ -131,24 +137,21 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
       
       final publicUrl = Supabase.instance.client.storage.from('assignment').getPublicUrl(path);
       
-      // Update state lokal status
       status.submission = publicUrl;
       status.isCompleted = true;
       status.assignmentDone = true;
       status.timeFinished = DateTime.now();
 
-      // 3. Update Database Backend (Poin, Badge, Status Chapter)
       await Future.wait([
         UserService.updateUserPointsAndBadge(user!),
         UserCourseService.updateUserCourse(uc.id, uc),
         UserChapterService.updateChapterStatus(status.id, status),
       ]);
 
-      // 4. Trigger Challenge (Misi COMPLETE_CHAPTER)
       await UserService.triggerChallengeManual(user!.id, 'COMPLETE_CHAPTER');
 
       if (mounted) {
-        widget.updateStatus(status); // Update ke Parent Screen
+        widget.updateStatus(status);
         _showSuccessDialog();
       }
     } catch (e) {
@@ -163,7 +166,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         );
       }
     } finally {
-      // PENTING: Loading harus berhenti baik sukses maupun gagal
       if (mounted) {
         setState(() => _isSubmitting = false); 
       }
@@ -211,10 +213,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     );
   }
 
-  void _openFile(String filePath) {
-    OpenFilex.open(filePath);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -236,7 +234,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
                         : HtmlWidget(assignment!.instruction, textStyle: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
                     const SizedBox(height: 20),
                     
-                    // Upload Area
                     GestureDetector(
                       onTap: _isSubmitting ? null : () async {
                         final result = await FilePicker.platform.pickFiles(
@@ -250,7 +247,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
 
                     const SizedBox(height: 20),
 
-                    // Button Submit
                     if (!_isSubmitting && file != null)
                       Column(
                         children: [
