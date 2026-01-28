@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:app/global_var.dart';
 import 'package:app/model/chapter.dart';
 import 'package:app/model/user_badge.dart';
@@ -49,6 +52,10 @@ class _ProfileState extends State<ProfileScreen> {
   List<Course>? allCourses;
   int streakDays = 0;
 
+  // --- VARIABLE UNTUK CLUSTER DINAMIS ---
+  String userType = "Disruptors"; 
+  final String apiBaseUrl = "http://10.241.247.43:7000/api"; // IP Hotspot Anda terbaru
+
   List<AvatarModel> availableAvatars = [
     AvatarModel(id: 1, imageUrl: 'lib/assets/avatars/avatar1.jpeg', price: 0),
     AvatarModel(id: 2, imageUrl: 'lib/assets/avatars/avatar2.jpeg', price: 100),
@@ -70,59 +77,80 @@ class _ProfileState extends State<ProfileScreen> {
     getUserData();
   }
 
-Future<void> getUserData() async {
-  try {
-    prefs = await SharedPreferences.getInstance();
-    final idUser = prefs.getInt('userId');
+  Future<void> getUserData() async {
+    try {
+      prefs = await SharedPreferences.getInstance();
+      final idUser = prefs.getInt('userId');
 
-    if (idUser != null) {
-      // 1. Ambil data user secara terpisah sebagai jangkar utama
-      Student fetchedUser = await UserService.getUserById(idUser);
-      
-      // 2. Ambil data pendukung lainnya
-      final results = await Future.wait([
-        BadgeService.getUserBadgeListByUserId(idUser),
-        UserService.getAllUser(),
-        CourseService.getEnrolledCourse(idUser),
-      ]);
+      if (idUser != null) {
+        // 1. Ambil data user dasar
+        Student fetchedUser = await UserService.getUserById(idUser);
+        
+        // 2. Ambil Profil Adaptif (Cluster) dari Database
+        await fetchAdaptiveProfile(idUser);
 
-      if (mounted) {
-        setState(() {
-          user = fetchedUser;
-          streakDays = fetchedUser.streak;
-          
-          // PERBAIKAN: Casting yang aman dengan keyword 'as' atau 'is'
-          if (results[0] is List<UserBadge>) {
-            final List<UserBadge> allBadges = results[0] as List<UserBadge>;
-            userBadges = allBadges.where((b) => !b.isPurchased).toList();
-          }
+        // 3. Ambil data pendukung secara paralel
+        final results = await Future.wait([
+          BadgeService.getUserBadgeListByUserId(idUser),
+          UserService.getAllUser(),
+          CourseService.getEnrolledCourse(idUser),
+        ]);
 
-          if (results[1] is List<Student>) {
-            final List<Student> allUsers = results[1] as List<Student>;
-            list = allUsers.where((u) => u.role == 'STUDENT').toList();
-            list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
-          }
-
-          if (results[2] is List<Course>) {
-            allCourses = results[2] as List<Course>;
-          }
-
-          // Hitung Rank
-          for (int i = 0; i < list.length; i++) {
-            if (list[i].id == user?.id) {
-              rank = i + 1;
-              break;
+        if (mounted) {
+          setState(() {
+            user = fetchedUser;
+            streakDays = fetchedUser.streak;
+            
+            if (results[0] is List<UserBadge>) {
+              final List<UserBadge> allBadges = results[0] as List<UserBadge>;
+              userBadges = allBadges.where((b) => !b.isPurchased).toList();
             }
-          }
-          isLoading = false;
-        });
+
+            if (results[1] is List<Student>) {
+              final List<Student> allUsers = results[1] as List<Student>;
+              list = allUsers.where((u) => u.role == 'STUDENT').toList();
+              list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
+            }
+
+            if (results[2] is List<Course>) {
+              allCourses = results[2] as List<Course>;
+            }
+
+            for (int i = 0; i < list.length; i++) {
+              if (list[i].id == user?.id) {
+                rank = i + 1;
+                break;
+              }
+            }
+            isLoading = false;
+          });
+        }
       }
+    } catch (e) {
+      debugPrint("Error detail profile screen: $e");
+      if (mounted) setState(() => isLoading = false);
     }
-  } catch (e) {
-    debugPrint("Error detail profile screen: $e");
-    if (mounted) setState(() => isLoading = false);
   }
-}
+
+  // --- FUNGSI FETCH CLUSTER ---
+  Future<void> fetchAdaptiveProfile(int idUser) async {
+    final String url = "$apiBaseUrl/user/adaptive/$idUser";
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            userType = data['currentCluster'] ?? "Disruptors";
+          });
+          debugPrint("PROFILE SCREEN SYNC SUCCESS: $userType");
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal sinkron cluster di Profile: $e");
+    }
+  }
+
   void logout() async {
     prefs = await SharedPreferences.getInstance();
     await prefs.clear();
@@ -184,6 +212,12 @@ Future<void> getUserData() async {
   }
 
   Widget _buildProfileHeader() {
+    // Logika Warna Label berdasarkan Cluster
+    Color labelColor = Colors.amber[700]!;
+    if (userType == "Achievers") labelColor = Colors.blue;
+    if (userType == "Players") labelColor = Colors.orange;
+    if (userType == "Free Spirits") labelColor = Colors.teal;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -216,10 +250,11 @@ Future<void> getUserData() async {
             ),
           ),
           const SizedBox(height: 8),
+          // --- LABEL CLUSTER DINAMIS ---
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.amber[700],
+              color: labelColor,
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
@@ -229,9 +264,9 @@ Future<void> getUserData() async {
                 ),
               ],
             ),
-            child: const Text(
-              'ACHIEVER',
-              style: TextStyle(
+            child: Text(
+              userType.toUpperCase(), // Akan menampilkan FREE SPIRITS, ACHIEVERS, dll.
+              style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
@@ -239,6 +274,7 @@ Future<void> getUserData() async {
               ),
             ),
           ),
+          const SizedBox(height: 6),
           Text(user?.studentId ?? "",
               style: const TextStyle(fontFamily: 'DIN_Next_Rounded', color: GlobalVar.accentColor)),
           const SizedBox(height: 25),
@@ -274,6 +310,7 @@ Future<void> getUserData() async {
     );
   }
 
+  // --- Bagian widget lainnya tetap sama ---
   Widget _buildAvatarStack() {
     return Stack(
       children: [
@@ -447,7 +484,6 @@ Future<void> getUserData() async {
   }
 
   void _showBadgeDetails(BuildContext context, BadgeModel badge) async {
-    // Tampilkan loading dialog kecil atau pakai try catch
     try {
       Course resCourse = await CourseService.getCourse(badge.courseId);
       Chapter resChapter = await ChapterService.getChapterById(badge.chapterId);
@@ -497,7 +533,6 @@ Future<void> getUserData() async {
   }
 }
 
-// Widget Menu tetap sama
 class ProfileMenuWidget extends StatelessWidget {
   const ProfileMenuWidget(
       {super.key, required this.title, required this.icon, required this.onPress, this.endIcon = true, this.textColor});

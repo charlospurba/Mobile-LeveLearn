@@ -56,7 +56,7 @@ class _HomeState extends State<Homescreen> {
 
   // --- KONFIGURASI NETWORK ---
   // Berdasarkan hasil ipconfig Anda: 172.27.80.44
-  final String apiBaseUrl = "http://172.27.80.44:7000/api";
+  final String apiBaseUrl = "http://10.241.247.43:7000/api";
 
   @override
   void initState() {
