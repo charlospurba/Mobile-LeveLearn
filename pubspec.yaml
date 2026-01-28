@@ -65,6 +65,7 @@ flutter:
     - lib/assets/2nd.png
     - lib/assets/3rd.png
     - lib/assets/empty.png
+    - lib/assets/gamification.jpeg
     - lib/assets/starempty.png
     - lib/assets/starfilled.png
     - lib/assets/learnbg.png

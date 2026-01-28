@@ -186,18 +186,59 @@ Future<void> getUserData() async {
   Widget _buildProfileHeader() {
     return Container(
       width: double.infinity,
-      color: GlobalVar.primaryColor,
-      padding: const EdgeInsets.only(bottom: 32),
+      decoration: BoxDecoration(
+        color: GlobalVar.primaryColor,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(30),
+          bottomRight: Radius.circular(30),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.only(bottom: 32, top: 20),
       child: Column(
         children: [
           _buildAvatarStack(),
-          const SizedBox(height: 10),
-          Text(user?.name ?? "",
-              style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'DIN_Next_Rounded',
-                  color: Colors.white)),
+          const SizedBox(height: 15),
+          Text(
+            user?.name ?? "",
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              fontFamily: 'DIN_Next_Rounded',
+              color: Colors.white,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.amber[700],
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Text(
+              'ACHIEVER',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
           Text(user?.studentId ?? "",
               style: const TextStyle(fontFamily: 'DIN_Next_Rounded', color: GlobalVar.accentColor)),
           const SizedBox(height: 25),
