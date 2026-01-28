@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:app/model/user.dart';
 import 'package:app/model/user_challenge.dart';
@@ -50,11 +51,12 @@ class _HomeState extends State<Homescreen> {
   List<UserBadge>? userBadges = [];
   int streakDays = 0;
 
-  // Variabel Profile Adaptif hasil klasifikasi GMM
-  String userType = "Achievers";
+  // Nilai default awal sesuai permintaan
+  String userType = "Disruptors";
 
   // --- KONFIGURASI NETWORK ---
-  final String apiBaseUrl = "http://172.27.80.114:7000/api";
+  // Berdasarkan hasil ipconfig Anda: 172.27.80.44
+  final String apiBaseUrl = "http://172.27.80.44:7000/api";
 
   @override
   void initState() {
@@ -72,26 +74,26 @@ class _HomeState extends State<Homescreen> {
       await getUserFromSharedPreference();
       
       if (idUser != 0) {
-        // 1. Kirim Log Akses secara asynchronous
-        ActivityService.sendLog(
-          userId: idUser, 
-          type: 'FREQUENT_ACCESS', 
-          value: 1.0
-        ).catchError((e) => debugPrint("Silently failed to log: $e"));
+        // 1. Ambil profil cluster SUDAH ADA di DB (Sequential & Prioritas)
+        // Dibuat await agar label Free Spirits muncul sebelum loading selesai
+        await fetchAdaptiveProfile();
 
-        // 2. Load Data UI dasar secara paralel
+        // 2. Load Data UI lainnya (Parallel)
         await Future.wait<dynamic>([
           handleStreakInteraction(),
           getAllUser(),
           getEnrolledCourse(),
           fetchChallenges(),
         ]);
-        
-        // 3. Jeda strategis agar BE selesai memproses ML di background
-        await Future.delayed(const Duration(milliseconds: 1500));
 
-        // 4. Ambil Profil Adaptif terbaru
-        await fetchAdaptiveProfile(); 
+        // 3. Kirim Log di Background (Non-blocking)
+        // Tidak di-await agar tidak menghambat UX jika server sibuk
+        ActivityService.sendLog(
+          userId: idUser, 
+          type: 'FREQUENT_ACCESS', 
+          value: 1.0
+        ).then((_) => debugPrint("Background ML Triggered"))
+         .catchError((e) => debugPrint("ML Trigger Error: $e"));
       }
     } catch (e) {
       debugPrint("Error loading home data: $e");
@@ -100,36 +102,52 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
-  Future<void> fetchAdaptiveProfile() async {
+  Future<void> fetchAdaptiveProfile({int retry = 0}) async {
     final String url = "$apiBaseUrl/user/adaptive/$idUser";
     try {
-      final response = await http.get(Uri.parse(url))
-          .timeout(const Duration(seconds: 8));
+      // Menggunakan timeout 12 detik dan Header Connection Keep-Alive
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          "Accept": "application/json",
+          "Connection": "keep-alive",
+        },
+      ).timeout(const Duration(seconds: 12));
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
           setState(() {
-            userType = data['currentCluster'] ?? "Achievers";
+            // Sinkronisasi dengan kolom currentCluster di DB
+            userType = data['currentCluster'] ?? "Disruptors";
           });
-          debugPrint("UI Adaptif Berhasil Disinkronkan: $userType");
+          debugPrint("SYNC DATABASE SUCCESS: $userType");
         }
       }
+    } on SocketException catch (e) {
+      debugPrint("Socket Exception: $e. Cek Firewall Port 7000!");
+      _retryFetch(retry);
+    } on TimeoutException catch (_) {
+      debugPrint("Fetch Timeout. Server sibuk...");
+      _retryFetch(retry);
     } catch (e) {
-      debugPrint("Gagal sinkron profil adaptif: $e");
+      debugPrint("Database Fetch Failed: $e");
+    }
+  }
+
+  void _retryFetch(int currentRetry) {
+    if (currentRetry < 2 && mounted) {
+      Future.delayed(const Duration(seconds: 2), () => fetchAdaptiveProfile(retry: currentRetry + 1));
     }
   }
 
   // --- REUSABLE SERVICE CALLS ---
-
   Future<void> fetchChallenges() async {
     if (idUser == 0) return;
     try {
       final result = await UserService.getUserChallenges(idUser);
       if (mounted) setState(() => myChallenges = result);
-    } catch (e) {
-      debugPrint("Gagal load challenges: $e");
-    }
+    } catch (e) { debugPrint("Challenge error: $e"); }
   }
 
   Future<void> handleStreakInteraction() async {
@@ -137,15 +155,8 @@ class _HomeState extends State<Homescreen> {
     try {
       final currentUser = await UserService.getUserById(idUser);
       final updatedUser = await UserService.updateUser(currentUser); 
-      if (mounted) {
-        setState(() {
-          user = updatedUser;
-          streakDays = updatedUser.streak;
-        });
-      }
-    } catch (e) {
-      debugPrint("Gagal sinkron streak: $e");
-    }
+      if (mounted) setState(() { user = updatedUser; streakDays = updatedUser.streak; });
+    } catch (e) { debugPrint("Streak error: $e"); }
   }
 
   Future<void> getEnrolledCourse() async {
@@ -153,33 +164,19 @@ class _HomeState extends State<Homescreen> {
     try {
       final result = await CourseService.getEnrolledCourse(idUser);
       allCourses = result;
-
       pref = await SharedPreferences.getInstance();
       final lastId = pref.getInt('lastestSelectedCourse');
       Course? foundCourse;
-
       if (lastId != null) {
-        for (var c in allCourses) {
-          if (c.id == lastId) { foundCourse = c; break; }
-        }
+        for (var c in allCourses) { if (c.id == lastId) { foundCourse = c; break; } }
       }
-
       if (foundCourse == null && allCourses.isNotEmpty) {
         foundCourse = allCourses.first;
         await pref.setInt('lastestSelectedCourse', foundCourse.id);
       }
-
       final badgeResult = await BadgeService.getUserBadgeListByUserId(idUser);
-
-      if (mounted) {
-        setState(() {
-          lastestCourse = foundCourse;
-          userBadges = badgeResult.where((b) => !b.isPurchased).toList();
-        });
-      }
-    } catch (e) {
-      debugPrint("Error enrolled course: $e");
-    }
+      if (mounted) setState(() { lastestCourse = foundCourse; userBadges = badgeResult.where((b) => !b.isPurchased).toList(); });
+    } catch (e) { debugPrint("Course error: $e"); }
   }
 
   Future<void> getAllUser() async {
@@ -191,17 +188,11 @@ class _HomeState extends State<Homescreen> {
           list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
         });
       }
-
       if (idUser == 0) return;
       for (int i = 0; i < list.length; i++) {
-        if (list[i].id == idUser) {
-          if (mounted) setState(() => rank = i + 1);
-          break;
-        }
+        if (list[i].id == idUser) { if (mounted) setState(() => rank = i + 1); break; }
       }
-    } catch (e) {
-      debugPrint('Leaderboard Error: $e');
-    }
+    } catch (e) { debugPrint('Leaderboard error: $e'); }
   }
 
   Future<void> getUserFromSharedPreference() async {
@@ -211,15 +202,8 @@ class _HomeState extends State<Homescreen> {
       idUser = storedIdUser;
       name = pref.getString('name') ?? '';
       final fetchedUser = await UserService.getUserById(idUser);
-      if (mounted) {
-        setState(() {
-          user = fetchedUser;
-          streakDays = fetchedUser.streak;
-        });
-      }
-    } else {
-      logout();
-    }
+      if (mounted) setState(() { user = fetchedUser; streakDays = fetchedUser.streak; });
+    } else { logout(); }
   }
 
   void logout() async {
@@ -234,17 +218,23 @@ class _HomeState extends State<Homescreen> {
 
   @override
   Widget build(BuildContext context) {
+    Color clusterColor = Colors.redAccent; 
+    IconData clusterIcon = Icons.bolt;
+
+    if (userType == "Achievers") {
+      clusterColor = Colors.blue; clusterIcon = Icons.stars;
+    } else if (userType == "Players") {
+      clusterColor = Colors.orange; clusterIcon = Icons.videogame_asset;
+    } else if (userType == "Free Spirits") {
+      clusterColor = Colors.teal; clusterIcon = Icons.explore;
+    }
+
     return Scaffold(
       body: Stack(
         children: [
           _buildBackgroundVector(),
           Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('lib/assets/pictures/background-pattern.png'),
-                fit: BoxFit.cover,
-              ),
-            ),
+            decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover)),
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
@@ -254,25 +244,16 @@ class _HomeState extends State<Homescreen> {
                       child: Column(
                         children: [
                           const SizedBox(height: 50),
-                          _buildProfileHeader(),
-                          _buildAdaptiveGreeting(), 
+                          _buildProfileHeader(clusterColor, clusterIcon),
+                          _buildAdaptiveGreeting(clusterColor, clusterIcon), 
                           _buildStatsDashboard(),
-                          
                           ChallengeWidget(
                             challenges: myChallenges, 
                             userId: idUser,
                             onTabChange: (index) => widget.updateIndex(index),
-                            onRefresh: () {
-                              fetchChallenges(); 
-                              getUserFromSharedPreference(); 
-                              Future.delayed(const Duration(seconds: 1), () => fetchAdaptiveProfile());
-                            },
+                            onRefresh: () { _initialLoad(); },
                           ),
-
-                          ProgressCard(
-                            lastestCourse: lastestCourse,
-                            onTap: () => widget.updateIndex(2),
-                          ),
+                          ProgressCard(lastestCourse: lastestCourse, onTap: () => widget.updateIndex(2)),
                           _buildExploreSection(),
                           LeaderboardList(students: list),
                           const SizedBox(height: 30),
@@ -286,22 +267,7 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
-  Widget _buildProfileHeader() {
-    // Menyesuaikan warna dan icon label berdasarkan klaster
-    Color clusterColor = Colors.blue;
-    IconData clusterIcon = Icons.stars;
-
-    if (userType == "Players") {
-      clusterColor = Colors.orange;
-      clusterIcon = Icons.videogame_asset;
-    } else if (userType == "Free Spirits") {
-      clusterColor = Colors.teal;
-      clusterIcon = Icons.explore;
-    } else if (userType == "Disruptors") {
-      clusterColor = Colors.redAccent;
-      clusterIcon = Icons.bolt;
-    }
-
+  Widget _buildProfileHeader(Color clusterColor, IconData clusterIcon) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
@@ -311,34 +277,18 @@ class _HomeState extends State<Homescreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Hello! Happy Learning', 
-                  style: TextStyle(color: AppColors.primaryColor, fontSize: 14, fontFamily: 'DIN_Next_Rounded')),
-                Text(name, 
-                  style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded')),
+                const Text('Hello! Happy Learning', style: TextStyle(color: AppColors.primaryColor, fontSize: 14, fontFamily: 'DIN_Next_Rounded')),
+                Text(name, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded')),
                 const SizedBox(height: 6),
-                // --- LABEL CLUSTER DI BAWAH NAMA ---
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: clusterColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: clusterColor.withOpacity(0.5)),
-                  ),
+                  decoration: BoxDecoration(color: clusterColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: clusterColor.withOpacity(0.5))),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(clusterIcon, size: 14, color: clusterColor),
                       const SizedBox(width: 6),
-                      Text(
-                        userType.toUpperCase(),
-                        style: TextStyle(
-                          color: clusterColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.5,
-                          fontFamily: 'DIN_Next_Rounded'
-                        ),
-                      ),
+                      Text(userType.toUpperCase(), style: TextStyle(color: clusterColor, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5, fontFamily: 'DIN_Next_Rounded')),
                     ],
                   ),
                 ),
@@ -347,175 +297,31 @@ class _HomeState extends State<Homescreen> {
           ),
           GestureDetector(
             onTap: () => widget.updateIndex(4),
-            child: CircleAvatar(
-              radius: 30,
-              backgroundColor: Colors.grey[200],
-              backgroundImage: user?.image != null && user?.image != "" ? NetworkImage(user!.image!) : null,
-              child: user?.image == null || user?.image == "" ? const Icon(Icons.person, size: 30) : null,
-            ),
+            child: CircleAvatar(radius: 30, backgroundColor: Colors.grey[200], backgroundImage: user?.image != null && user?.image != "" ? NetworkImage(user!.image!) : null, child: user?.image == null || user?.image == "" ? const Icon(Icons.person, size: 30) : null),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAdaptiveGreeting() {
-    String greeting = "Semangat belajar hari ini!";
-    IconData icon = Icons.wb_sunny;
-    Color color = AppColors.primaryColor;
-
-    if (userType == "Achievers") {
-      greeting = "Siap memecahkan rekor nilai kuis hari ini?";
-      icon = Icons.emoji_events;
-      color = Colors.blue;
-    } else if (userType == "Players") {
-      greeting = "Ada hadiah baru! Ambil sekarang di menu tantangan.";
-      icon = Icons.redeem;
-      color = Colors.orange;
-    } else if (userType == "Free Spirits") {
-      greeting = "Jelajahi materi baru dan temukan pengetahuan unik!";
-      icon = Icons.explore;
-      color = Colors.teal;
-    } else if (userType == "Disruptors") {
-      greeting = "Tetap fokus pada materi dan raih peringkat teratas!";
-      icon = Icons.bolt;
-      color = Colors.redAccent;
-    }
+  Widget _buildAdaptiveGreeting(Color color, IconData icon) {
+    String greeting = "Semangat belajar!";
+    if (userType == "Achievers") greeting = "Siap memecahkan rekor nilai kuis?";
+    else if (userType == "Players") greeting = "Ada hadiah baru menantimu!";
+    else if (userType == "Free Spirits") greeting = "Temukan pengetahuan unik hari ini!";
+    else if (userType == "Disruptors") greeting = "Tetap fokus dan raih peringkat teratas!";
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                greeting,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold, 
-                  color: color, 
-                  fontFamily: 'DIN_Next_Rounded'
-                ),
-              ),
-            ),
-          ],
-        ),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
+        child: Row(children: [ Icon(icon, color: color), const SizedBox(width: 12), Expanded(child: Text(greeting, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontFamily: 'DIN_Next_Rounded')))]),
       ),
     );
   }
 
-  Widget _buildBackgroundVector() {
-    return Positioned(
-      bottom: 0,
-      right: 0,
-      child: Opacity(
-        opacity: 0.2,
-        child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200),
-      ),
-    );
-  }
-
-  Widget _buildStatsDashboard() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Card(
-        elevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            image: const DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.start, 
-                children: [
-                  BadgeStat(count: userBadges?.length ?? 0),
-                  const SizedBox(width: 24),
-                  CourseStat(count: allCourses.length),
-                  const SizedBox(width: 24),
-                  RankStat(rank: rank, total: list.length),
-                  const SizedBox(width: 24),
-                  StreakStat(days: streakDays), 
-                ],
-              ),
-              const SizedBox(height: 25),
-              TotalPoints(points: user?.points ?? 0),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExploreSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text('Explore Courses', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded')),
-        ),
-        const SizedBox(height: 10),
-        allCourses.isEmpty
-            ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet.")))
-            : CarouselSlider.builder(
-                itemCount: allCourses.length,
-                options: CarouselOptions(
-                  height: 180, 
-                  viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, 
-                  enlargeCenterPage: true,
-                  enableInfiniteScroll: allCourses.length > 1, 
-                  autoPlay: allCourses.length > 1,
-                ),
-                itemBuilder: (context, index, realIndex) {
-                  final course = allCourses[index];
-                  return GestureDetector(
-                    onTap: () {
-                      pref.setInt('lastestSelectedCourse', course.id);
-                      if (mounted) setState(() { lastestCourse = course; });
-                      widget.updateIndex(2);
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(15),
-                        image: DecorationImage(
-                          image: course.image != "" 
-                            ? NetworkImage(course.image) 
-                            : const AssetImage('lib/assets/pictures/imk-picture.jpg') as ImageProvider,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      child: Container(
-                        alignment: Alignment.bottomLeft,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(15),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter, 
-                            end: Alignment.bottomCenter, 
-                            colors: [Colors.transparent, Colors.black.withOpacity(0.7)]
-                          ),
-                        ),
-                        child: Text(course.courseName, 
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
-                      ),
-                    ),
-                  );
-                },
-              ),
-      ],
-    );
-  }
+  Widget _buildStatsDashboard() { return Padding(padding: const EdgeInsets.all(16.0), child: Card(elevation: 8, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), image: const DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ Row(mainAxisAlignment: MainAxisAlignment.start, children: [BadgeStat(count: userBadges?.length ?? 0), const SizedBox(width: 24), CourseStat(count: allCourses.length), const SizedBox(width: 24), RankStat(rank: rank, total: list.length), const SizedBox(width: 24), StreakStat(days: streakDays)]), const SizedBox(height: 25), TotalPoints(points: user?.points ?? 0)])))); }
+  Widget _buildExploreSection() { return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('Explore Courses', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded'))), const SizedBox(height: 10), allCourses.isEmpty ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet."))) : CarouselSlider.builder(itemCount: allCourses.length, options: CarouselOptions(height: 180, viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, enlargeCenterPage: true, enableInfiniteScroll: allCourses.length > 1, autoPlay: allCourses.length > 1), itemBuilder: (context, index, realIndex) { final course = allCourses[index]; return GestureDetector(onTap: () { pref.setInt('lastestSelectedCourse', course.id); setState(() { lastestCourse = course; }); widget.updateIndex(2); }, child: Container(margin: const EdgeInsets.all(5), decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), image: DecorationImage(image: course.image != "" ? NetworkImage(course.image) : const AssetImage('lib/assets/pictures/imk-picture.jpg') as ImageProvider, fit: BoxFit.cover)), child: Container(alignment: Alignment.bottomLeft, padding: const EdgeInsets.all(10), decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.7)])), child: Text(course.courseName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'))))); })]); }
+  Widget _buildBackgroundVector() { return Positioned(bottom: 0, right: 0, child: Opacity(opacity: 0.2, child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200))); }
 }
