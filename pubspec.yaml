@@ -94,6 +94,7 @@ flutter:
     - lib/assets/pictures/logo-full.png
     - lib/assets/pictures/logo-png.png
     - lib/assets/pictures/about-header.png
+    - lib/assets/LeveLearn.png
     - lib/assets/pictures/about-logo.png
     - lib/assets/pictures/docker.png
     - lib/assets/pictures/flutter.png
