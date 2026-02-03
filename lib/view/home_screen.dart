@@ -8,7 +8,6 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Import Service & Utils
 import '../model/course.dart';
 import '../model/user_badge.dart';
 import '../service/badge_service.dart';
@@ -18,7 +17,6 @@ import '../service/activity_service.dart';
 import '../utils/colors.dart';
 import 'login_screen.dart';
 
-// Import Komponen Gamifikasi
 import 'package:app/view/gamification/badge_stat.dart';
 import 'package:app/view/gamification/course_stat.dart';
 import 'package:app/view/gamification/rank_stat.dart';
@@ -37,7 +35,6 @@ class Homescreen extends StatefulWidget {
 }
 
 class _HomeState extends State<Homescreen> {
-  // --- STATE VARIABLES ---
   List<Course> allCourses = [];
   List<Student> list = [];
   List<UserChallenge> myChallenges = []; 
@@ -50,21 +47,15 @@ class _HomeState extends State<Homescreen> {
   int idUser = 0;
   List<UserBadge>? userBadges = [];
   int streakDays = 0;
-
-  // Nilai default awal sesuai permintaan
   String userType = "Disruptors";
 
-  // --- KONFIGURASI NETWORK ---
-  // Berdasarkan hasil ipconfig Anda: 172.27.80.44
-  final String apiBaseUrl = "http://10.241.247.43:7000/api";
+  final String apiBaseUrl = "http://10.106.207.43:7000/api";
 
   @override
   void initState() {
     super.initState();
     _initialLoad(); 
   }
-
-  // --- LOGIC FUNCTIONS ---
 
   Future<void> _initialLoad() async {
     if (!mounted) return;
@@ -74,11 +65,8 @@ class _HomeState extends State<Homescreen> {
       await getUserFromSharedPreference();
       
       if (idUser != 0) {
-        // 1. Ambil profil cluster SUDAH ADA di DB (Sequential & Prioritas)
-        // Dibuat await agar label Free Spirits muncul sebelum loading selesai
         await fetchAdaptiveProfile();
 
-        // 2. Load Data UI lainnya (Parallel)
         await Future.wait<dynamic>([
           handleStreakInteraction(),
           getAllUser(),
@@ -86,14 +74,11 @@ class _HomeState extends State<Homescreen> {
           fetchChallenges(),
         ]);
 
-        // 3. Kirim Log di Background (Non-blocking)
-        // Tidak di-await agar tidak menghambat UX jika server sibuk
         ActivityService.sendLog(
           userId: idUser, 
           type: 'FREQUENT_ACCESS', 
           value: 1.0
-        ).then((_) => debugPrint("Background ML Triggered"))
-         .catchError((e) => debugPrint("ML Trigger Error: $e"));
+        );
       }
     } catch (e) {
       debugPrint("Error loading home data: $e");
@@ -102,46 +87,23 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
-  Future<void> fetchAdaptiveProfile({int retry = 0}) async {
+  Future<void> fetchAdaptiveProfile() async {
     final String url = "$apiBaseUrl/user/adaptive/$idUser";
     try {
-      // Menggunakan timeout 12 detik dan Header Connection Keep-Alive
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          "Accept": "application/json",
-          "Connection": "keep-alive",
-        },
-      ).timeout(const Duration(seconds: 12));
-      
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
           setState(() {
-            // Sinkronisasi dengan kolom currentCluster di DB
             userType = data['currentCluster'] ?? "Disruptors";
           });
-          debugPrint("SYNC DATABASE SUCCESS: $userType");
         }
       }
-    } on SocketException catch (e) {
-      debugPrint("Socket Exception: $e. Cek Firewall Port 7000!");
-      _retryFetch(retry);
-    } on TimeoutException catch (_) {
-      debugPrint("Fetch Timeout. Server sibuk...");
-      _retryFetch(retry);
     } catch (e) {
-      debugPrint("Database Fetch Failed: $e");
+      debugPrint("Adaptive Fetch Failed: $e");
     }
   }
 
-  void _retryFetch(int currentRetry) {
-    if (currentRetry < 2 && mounted) {
-      Future.delayed(const Duration(seconds: 2), () => fetchAdaptiveProfile(retry: currentRetry + 1));
-    }
-  }
-
-  // --- REUSABLE SERVICE CALLS ---
   Future<void> fetchChallenges() async {
     if (idUser == 0) return;
     try {
@@ -214,8 +176,6 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
-  // --- UI BUILDING ---
-
   @override
   Widget build(BuildContext context) {
     Color clusterColor = Colors.redAccent; 
@@ -246,16 +206,31 @@ class _HomeState extends State<Homescreen> {
                           const SizedBox(height: 50),
                           _buildProfileHeader(clusterColor, clusterIcon),
                           _buildAdaptiveGreeting(clusterColor, clusterIcon), 
+                          
+                          // 1. STATS DASHBOARD (Berisi Badges, Course, Rank, Streak, Points)
                           _buildStatsDashboard(),
-                          ChallengeWidget(
-                            challenges: myChallenges, 
-                            userId: idUser,
-                            onTabChange: (index) => widget.updateIndex(index),
-                            onRefresh: () { _initialLoad(); },
-                          ),
-                          ProgressCard(lastestCourse: lastestCourse, onTap: () => widget.updateIndex(2)),
+
+                          // 2. CHALLENGE (Whitelist: Achievers & Free Spirits)
+                          if (userType == "Achievers" || userType == "Free Spirits")
+                            ChallengeWidget(
+                              challenges: myChallenges, 
+                              userId: idUser,
+                              onTabChange: (index) => widget.updateIndex(index),
+                              onRefresh: () { _initialLoad(); },
+                            ),
+
+                          // 3. PROGRESS CARD (Whitelist: Semua kecuali Players)
+                          // Berdasarkan aturan Anda, Players tidak punya Progress Bar di whitelist
+                          if (userType != "Players")
+                            ProgressCard(lastestCourse: lastestCourse, onTap: () => widget.updateIndex(2)),
+
                           _buildExploreSection(),
-                          LeaderboardList(students: list),
+
+                          // 4. LEADERBOARD (Whitelist: Achievers, Players, Disruptors)
+                          // Free Spirits TIDAK memiliki Leaderboard di whitelist
+                          if (userType != "Free Spirits")
+                            LeaderboardList(students: list),
+
                           const SizedBox(height: 30),
                         ],
                       ),
@@ -321,7 +296,80 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
-  Widget _buildStatsDashboard() { return Padding(padding: const EdgeInsets.all(16.0), child: Card(elevation: 8, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), child: Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), image: const DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ Row(mainAxisAlignment: MainAxisAlignment.start, children: [BadgeStat(count: userBadges?.length ?? 0), const SizedBox(width: 24), CourseStat(count: allCourses.length), const SizedBox(width: 24), RankStat(rank: rank, total: list.length), const SizedBox(width: 24), StreakStat(days: streakDays)]), const SizedBox(height: 25), TotalPoints(points: user?.points ?? 0)])))); }
-  Widget _buildExploreSection() { return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('Explore Courses', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded'))), const SizedBox(height: 10), allCourses.isEmpty ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet."))) : CarouselSlider.builder(itemCount: allCourses.length, options: CarouselOptions(height: 180, viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, enlargeCenterPage: true, enableInfiniteScroll: allCourses.length > 1, autoPlay: allCourses.length > 1), itemBuilder: (context, index, realIndex) { final course = allCourses[index]; return GestureDetector(onTap: () { pref.setInt('lastestSelectedCourse', course.id); setState(() { lastestCourse = course; }); widget.updateIndex(2); }, child: Container(margin: const EdgeInsets.all(5), decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), image: DecorationImage(image: course.image != "" ? NetworkImage(course.image) : const AssetImage('lib/assets/pictures/imk-picture.jpg') as ImageProvider, fit: BoxFit.cover)), child: Container(alignment: Alignment.bottomLeft, padding: const EdgeInsets.all(10), decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.7)])), child: Text(course.courseName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'))))); })]); }
+  Widget _buildStatsDashboard() { 
+    return Padding(
+      padding: const EdgeInsets.all(16.0), 
+      child: Card(
+        elevation: 8, 
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
+        child: Container(
+          padding: const EdgeInsets.all(20), 
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), image: const DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover)), 
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, 
+            children: [ 
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start, 
+                children: [
+                  // WHITELIST: Badges (Achievers, Free Spirits)
+                  if (userType == "Achievers" || userType == "Free Spirits") ...[
+                    BadgeStat(count: userBadges?.length ?? 0),
+                    const SizedBox(width: 24),
+                  ],
+                  // WHITELIST: Progress/Course (Achievers, Free Spirits, Disruptors)
+                  // Players TIDAK memiliki Course/Progress di aturan Anda
+                  if (userType != "Players") ...[
+                    CourseStat(count: allCourses.length),
+                    const SizedBox(width: 24),
+                  ],
+                  // WHITELIST: Rank/Leaderboard (Achievers, Players, Disruptors)
+                  // Free Spirits TIDAK memiliki Leaderboard/Rank
+                  if (userType != "Free Spirits") ...[
+                    RankStat(rank: rank, total: list.length),
+                    const SizedBox(width: 24),
+                  ],
+                  // WHITELIST: Streak (Hanya Players)
+                  if (userType == "Players")
+                    StreakStat(days: streakDays),
+                ],
+              ), 
+              const SizedBox(height: 25), 
+              // WHITELIST: Point/XP (Achievers, Players, Free Spirits)
+              // Disruptors TIDAK memiliki Point/XP di aturan Anda
+              if (userType != "Disruptors")
+                TotalPoints(points: user?.points ?? 0)
+            ],
+          ),
+        ),
+      ),
+    ); 
+  }
+
+  Widget _buildExploreSection() { 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start, 
+      children: [ 
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('Explore Courses', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded'))), 
+        const SizedBox(height: 10), 
+        allCourses.isEmpty ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet."))) 
+        : CarouselSlider.builder(
+            itemCount: allCourses.length, 
+            options: CarouselOptions(height: 180, viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, enlargeCenterPage: true, enableInfiniteScroll: allCourses.length > 1, autoPlay: allCourses.length > 1), 
+            itemBuilder: (context, index, realIndex) { 
+              final course = allCourses[index]; 
+              return GestureDetector(
+                onTap: () { pref.setInt('lastestSelectedCourse', course.id); setState(() { lastestCourse = course; }); widget.updateIndex(2); }, 
+                child: Container(
+                  margin: const EdgeInsets.all(5), 
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), image: DecorationImage(image: course.image != "" ? NetworkImage(course.image) : const AssetImage('lib/assets/pictures/imk-picture.jpg') as ImageProvider, fit: BoxFit.cover)), 
+                  child: Container(alignment: Alignment.bottomLeft, padding: const EdgeInsets.all(10), decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.7)])), child: Text(course.courseName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')))
+                )
+              ); 
+            }
+          )
+      ]
+    ); 
+  }
+
   Widget _buildBackgroundVector() { return Positioned(bottom: 0, right: 0, child: Opacity(opacity: 0.2, child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200))); }
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:app/model/chapter_status.dart';
 import 'package:app/model/user_course.dart';
 import 'package:app/utils/colors.dart';
@@ -39,12 +41,13 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
   Student? user;
   late TabController _tabController;
   int _currentIndex = 0;
-  final List<Widget?> _screens = [null, null, null]; // Lazy-loaded tabs
+  final List<Widget?> _screens = [null, null, null];
   late ChapterStatus status;
   bool materialComplete = false;
   bool _materialLocked = false;
   bool _assessmentStarted = false;
   bool _assessmentFinished = false;
+  String userType = "Disruptors";
 
   @override
   void initState() {
@@ -52,12 +55,20 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
     status = widget.status;
     user = widget.user;
     super.initState();
+    _fetchUserCluster();
     _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() {
-      setState(() {
-        _currentIndex = _tabController.index;
-      });
-    });
+  }
+
+  Future<void> _fetchUserCluster() async {
+    try {
+      final response = await http.get(Uri.parse("http://10.106.207.43:7000/api/user/adaptive/${widget.user.id}"));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) setState(() => userType = data['currentCluster'] ?? "Disruptors");
+      }
+    } catch (e) {
+      debugPrint("Gagal sinkron cluster: $e");
+    }
   }
 
   @override
@@ -68,32 +79,29 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
 
   void updateProgress(bool value) {
     setState(() {
-      materialComplete = true;// Update progress in real-time
+      materialComplete = true;
+      _screens[1] = null; 
     });
-    print("Material complete : $materialComplete");
   }
 
   void updateStatus(ChapterStatus value) {
     setState(() {
-      status = value; // Update progress in real-time
+      status = value;
     });
   }
 
   void updateMaterialLocked(bool value) {
-    setState(() {
-      _materialLocked = value; // Update progress in real-time
-    });
+    setState(() => _materialLocked = value);
   }
 
   void updateAssessmentStarted(bool value) {
-    setState(() {
-      _assessmentStarted = value; // Update progress in real-time
-    });
+    setState(() => _assessmentStarted = value);
   }
 
   void updateAssessmentFinished(bool value) {
     setState(() {
-      _assessmentFinished = value; // Update progress in real-time
+      _assessmentFinished = value;
+      _screens[2] = null;
     });
   }
 
@@ -106,17 +114,16 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
               : MaterialScreen(status: widget.status, chapterName: widget.chapterName, updateProgress: updateProgress, updateStatus: updateStatus,);
           break;
         case 1:
-          print('$materialComplete awoooooo');
           _screens[index] = materialComplete
               ? widget.status.assessmentDone
-              ? AlreadyFinishedAssessmentAssessmentScreen(status: widget.status, user: widget.user)
-              : AssessmentScreen(status: widget.status, user: widget.user, updateMaterialLocked: updateMaterialLocked, updateStatus: updateStatus, updateAssessmentFinished: updateAssessmentFinished, updateAssessmentStarted: updateAssessmentStarted,)
+                  ? AlreadyFinishedAssessmentAssessmentScreen(status: widget.status, user: widget.user)
+                  : AssessmentScreen(status: widget.status, user: widget.user, userType: userType, updateMaterialLocked: updateMaterialLocked, updateStatus: updateStatus, updateAssessmentFinished: updateAssessmentFinished, updateAssessmentStarted: updateAssessmentStarted,)
               : _lockedContent();
           break;
         case 2:
-          _screens[index] = widget.status.assessmentDone || _assessmentFinished ?
-              AssignmentScreen(status: status, user: widget.user, uc: widget.uc, level: widget.level, chLength: widget.chLength, idBadge: widget.idBadge, updateProgress: updateProgress, updateStatus: updateStatus) :
-              _lockedAssignmentContent();
+          _screens[index] = widget.status.assessmentDone || _assessmentFinished
+              ? AssignmentScreen(status: status, user: widget.user, uc: widget.uc, level: widget.level, chLength: widget.chLength, idBadge: widget.idBadge, updateProgress: updateProgress, updateStatus: updateStatus)
+              : _lockedAssignmentContent();
           break;
       }
     }
@@ -125,160 +132,44 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-        onWillPop: () async {
-          Navigator.pop(context, {
-            'status': status.toJson(),
-            'index': widget.chapterIndexInList
-          }
-          );
-          return true;
-        },
-        child: Scaffold(
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            backgroundColor: AppColors.primaryColor,
-            title: Text(widget.chapterName, style: TextStyle(color: Colors.white, fontSize: 18, fontFamily: 'DIN_Next_Rounded')),
-            centerTitle: true,
-          ),
-          body: Column(
-            children: [
-              Material(
-                color: Colors.white,
-                child: IgnorePointer(
-                  ignoring: _assessmentStarted && !_assessmentFinished, // Disable interaction when assessment is active
-                  child: TabBar(
-                    controller: _tabController,
-                    indicator: CustomTabIndicator(color: AppColors.primaryColor),
-                    labelColor: AppColors.primaryColor,
-                    unselectedLabelColor: Colors.grey.shade400,
-                    labelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'),
-                    unselectedLabelStyle: TextStyle(fontSize: 14, fontFamily: 'DIN_Next_Rounded'),
-                    onTap: (index) {
-                      if (_assessmentStarted && !_assessmentFinished) {
-                        return; // Prevent tab switch
-                      }
-                      setState(() {
-                        _currentIndex = index; // Allow tab switch
-                      });
-                    },
-                    tabs: [
-                      Tab(child: Text('Material')),
-                      Tab(child: Text('Assessment')),
-                      Tab(child: Text('Assignment')),
-                    ],
-                  ),
+    return PopScope(
+      canPop: !_assessmentStarted || _assessmentFinished,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context, {'status': status.toJson(), 'index': widget.chapterIndexInList});
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          backgroundColor: AppColors.primaryColor,
+          title: Text(widget.chapterName, style: const TextStyle(color: Colors.white, fontSize: 18, fontFamily: 'DIN_Next_Rounded')),
+          centerTitle: true,
+        ),
+        body: Column(
+          children: [
+            Material(
+              color: Colors.white,
+              child: IgnorePointer(
+                ignoring: _assessmentStarted && !_assessmentFinished,
+                child: TabBar(
+                  controller: _tabController,
+                  indicator: CustomTabIndicator(color: AppColors.primaryColor),
+                  labelColor: AppColors.primaryColor,
+                  unselectedLabelColor: Colors.grey.shade400,
+                  onTap: (index) => setState(() => _currentIndex = index),
+                  tabs: const [Tab(text: 'Material'), Tab(text: 'Assessment'), Tab(text: 'Assignment')],
                 ),
               ),
-              Expanded(
-                child: _buildPage(_currentIndex), // Only build the selected tab
-              ),
-            ],
-          ),
-        )
-    );
-  }
-
-  Widget _lockedContent() {
-    return Container(
-      decoration: BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage(
-              'lib/assets/pictures/background-pattern.png'
-          ),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset('lib/assets/pixels/lock-pixel.png', height: 50),
-              SizedBox(height: 16),
-              Text(
-                "Assessment Terkunci",
-                style: TextStyle(fontSize: 16, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold),
-              ),Text(
-                "Selesaikan materi terlebih dahulu untuk membuka Assessment!",
-                style: TextStyle(fontFamily: 'DIN_Next_Rounded'),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+            ),
+            Expanded(child: _buildPage(_currentIndex)),
+          ],
         ),
       ),
     );
   }
 
-  Widget _lockedMaterialContent() {
-    return Container(
-      decoration: BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage('lib/assets/pictures/background-pattern.png'),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset('lib/assets/pixels/lock-pixel.png', height: 50),
-              SizedBox(height: 16),
-              Text(
-                "Material Terkunci",
-                style: TextStyle(
-                    fontSize: 16,
-                    color: AppColors.primaryColor,
-                    fontFamily: 'DIN_Next_Rounded',
-                    fontWeight: FontWeight.bold),
-              ),
-              Text(
-                "Anda sedang dalam pengerjaan assessment. Selesaikan terlebih dahulu assessment untuk mengakses kembali Material!",
-                style: TextStyle(fontFamily: 'DIN_Next_Rounded'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _lockedAssignmentContent() {
-    return Container(
-      decoration: BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage(
-              'lib/assets/pictures/background-pattern.png'
-          ),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset('lib/assets/pixels/lock-pixel.png', height: 50),
-              SizedBox(height: 16),
-              Text(
-                "Assignment Terkunci",
-                style: TextStyle(fontSize: 16, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold),
-              ),
-              Text(
-                "Selesaikan Assessment terlebih dahulu untuk membuka Assignment!",
-                style: TextStyle(fontFamily: 'DIN_Next_Rounded'),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
+  // WIDGET LOCKED TETAP SAMA SEPERTI SEBELUMNYA
+  Widget _lockedContent() => Container(child: const Center(child: Text("Assessment Terkunci!")));
+  Widget _lockedMaterialContent() => Container(child: const Center(child: Text("Material Terkunci!")));
+  Widget _lockedAssignmentContent() => Container(child: const Center(child: Text("Assignment Terkunci!")));
 }

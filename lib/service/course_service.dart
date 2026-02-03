@@ -25,19 +25,20 @@ class CourseService {
   static Future<Course> getCourse(int id) async {
     try {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/course/$id'));
-      final body = response.body;
-      final result = jsonDecode(body);
-      Course courses = Course(
+      final result = jsonDecode(response.body);
+      
+      // PERBAIKAN: Gunakan fromJson agar data progress dan struktur JSON konsisten
+      // Jika backend mengembalikan object course langsung tanpa pembungkus 'course':
+      return Course(
         id: result['id'],
         courseName: result['name'],
         codeCourse: result['code'],
         description: result['description'],
-        image: result['image'],
+        image: result['image'] ?? '',
         createdAt: DateTime.parse(result['createdAt']),
         updatedAt: DateTime.parse(result['updatedAt']),
-        progress: 0
+        progress: result['progress'] ?? 0, // Ambil progres asli, jangan dipaksa 0
       );
-      return courses;
     } catch(e){
       throw Exception(e.toString());
     }
@@ -48,19 +49,10 @@ class CourseService {
       final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/course/$id/chapters'));
       final body = response.body;
       final result = jsonDecode(body);
-      print(result);
-      List<Chapter> chapter = List.from(
+      
+      List<Chapter> chapter = List<Chapter>.from(
         result.map(
-            (result) => Chapter(
-                id: result['id'],
-                name: result['name'],
-                description: result['description'],
-                level: result['level'],
-                courseId: result['courseId'],
-                isCheckpoint: result['isCheckpoint'],
-                createdAt: DateTime.parse(result['createdAt']),
-                updatedAt: DateTime.parse(result['updatedAt']),
-            )
+            (item) => Chapter.fromJson(item)
         )
       );
       return chapter;

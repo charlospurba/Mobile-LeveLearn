@@ -6,7 +6,7 @@ import '../model/learning_material.dart';
 import '../service/chapter_service.dart';
 import '../service/user_chapter_service.dart';
 import '../service/user_service.dart';
-import '../service/activity_service.dart'; // IMPORT BARU
+import '../service/activity_service.dart'; 
 import '../utils/colors.dart';
 
 class MaterialScreen extends StatefulWidget {
@@ -33,36 +33,39 @@ class _MaterialScreenState extends State<MaterialScreen> {
   double progressValue = 0.0;
   bool showDialogMaterialOnce = false;
   late ChapterStatus status;
+  bool isLoading = true; // Flag Loading
+  bool hasError = false; // Flag Error
 
   // LOG TRIGGER: FREE SPIRITS (Session Duration)
   final Stopwatch _timer = Stopwatch(); 
 
   @override
   void initState() {
+    super.initState();
     status = widget.status;
     showDialogMaterialOnce = widget.status.materialDone;
     progressValue = widget.status.materialDone ? 1.0 : 0;
     
-    _timer.start(); // Mulai menghitung durasi belajar
-
-    getMaterial(widget.status.chapterId);
-    
-    super.initState();
+    _timer.start(); 
     _scrollController = ScrollController();
     _scrollController.addListener(updateProgressMaterial);
+
+    getMaterial(widget.status.chapterId);
   }
 
   @override
   void dispose() {
     _timer.stop();
     
-    // LOG TRIGGER: Kirim durasi membaca materi ke backend dalam satuan detik
-    ActivityService.sendLog(
-      userId: widget.status.userId, 
-      type: 'SESSION_DURATION', 
-      value: _timer.elapsed.inSeconds.toDouble(),
-      metadata: {"chapterId": widget.status.chapterId}
-    );
+    // Kirim durasi membaca materi ke backend (Fitur Cluster Free Spirits)
+    if (_timer.elapsed.inSeconds > 2) { // Hanya kirim jika durasi > 2 detik
+        ActivityService.sendLog(
+          userId: widget.status.userId, 
+          type: 'SESSION_DURATION', 
+          value: _timer.elapsed.inSeconds.toDouble(),
+          metadata: {"chapterId": widget.status.chapterId}
+        ).then((_) => debugPrint("Duration Log Sent")).catchError((e) => debugPrint("Log Error: $e"));
+    }
 
     _scrollController.removeListener(updateProgressMaterial);
     _scrollController.dispose();
@@ -70,40 +73,118 @@ class _MaterialScreenState extends State<MaterialScreen> {
   }
 
   void getMaterial(int id) async {
-    final resultMaterial = await ChapterService.getMaterialByChapterId(id);
-    if (mounted) {
-      setState(() {
-        material = resultMaterial;
-      });
+    if (!mounted) return;
+    setState(() {
+      isLoading = true;
+      hasError = false;
+    });
+
+    try {
+      // Panggil service dengan timeout
+      final resultMaterial = await ChapterService.getMaterialByChapterId(id)
+          .timeout(const Duration(seconds: 10));
+      
+      if (mounted) {
+        setState(() {
+          material = resultMaterial;
+          isLoading = false;
+          hasError = (resultMaterial == null);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching material: $e");
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          hasError = true;
+        });
+      }
     }
   }
 
-  void updateProgressMaterial() {
-    if (_scrollController.position.maxScrollExtent <= 0) return;
+  // --- UI BUILDING ---
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold( // Gunakan Scaffold agar layout lebih stabil
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('lib/assets/pictures/background-pattern.png'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: _buildBody(),
+      ),
+    );
+  }
 
-    double currentProgressValue = _scrollController.offset / _scrollController.position.maxScrollExtent;
-
-    if (currentProgressValue < 0.0) {
-      currentProgressValue = 0.0;
-    } else if (currentProgressValue > 1.0) {
-      currentProgressValue = 1.0;
+  Widget _buildBody() {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
     }
 
+    if (hasError || material == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.menu_book_rounded, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              "Materi belum tersedia",
+              style: TextStyle(fontSize: 16, color: AppColors.primaryColor, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => getMaterial(widget.status.chapterId),
+              child: const Text("Coba Lagi"),
+            )
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Text(
+              widget.chapterName,
+              style: const TextStyle(
+                fontSize: 22, 
+                fontWeight: FontWeight.bold, 
+                color: AppColors.primaryColor,
+                fontFamily: 'DIN_Next_Rounded'
+              ),
+            ),
+            const Divider(thickness: 1.5),
+            const SizedBox(height: 10),
+            _buildHTMLContent(material!.content),
+            const SizedBox(height: 80), 
+          ],
+        ),
+      ),
+    );
+  }
+
+  // LOGIC PROGRESS & DIALOG (Tetap sama dengan perbaikan pemanggilan)
+  void updateProgressMaterial() {
+    if (_scrollController.position.maxScrollExtent <= 0) return;
+    double currentProgressValue = _scrollController.offset / _scrollController.position.maxScrollExtent;
+    
     if (currentProgressValue >= 1.0 && !showDialogMaterialOnce) {
       setState(() {
         progressValue = 1.0;
         showDialogMaterialOnce = true;
       });
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showCompletionDialog(context, "Yeay! Kamu berhasil menyelesaikan Materi. Ayo lanjutkan ke bagian Assessment.", false, false);
-      });
-
       _triggerMaterialChallenge();
-    } else {
-      setState(() {
-        progressValue = currentProgressValue <= progressValue ? progressValue : currentProgressValue;
-      });
+      showCompletionDialog(context, "Yeay! Kamu berhasil menyelesaikan Materi. Ayo lanjutkan ke bagian Assessment.");
     }
   }
 
@@ -112,128 +193,38 @@ class _MaterialScreenState extends State<MaterialScreen> {
       status.materialDone = true;
       widget.updateProgress(true);
       widget.updateStatus(status);
-
       await UserChapterService.updateChapterStatus(status.id, status);
       await UserService.triggerChallengeManual(status.userId, 'COMPLETE_CHAPTER');
-      
-      debugPrint(">>> Sinyal Challenge Materi Dikirim! <<<");
     } catch (e) {
-      debugPrint("Error triggering material challenge: $e");
+      debugPrint("Error progress: $e");
     }
   }
 
-  void showCompletionDialog(BuildContext context, String message, bool isAssessment, bool isAssignment) {
+  void showCompletionDialog(BuildContext context, String message) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
-            "Progress Completed!",
-            style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset('lib/assets/pixels/check.png', height: 72),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                style: const TextStyle(fontFamily: 'DIN_Next_Rounded'),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text(
-                  "OK",
-                  style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        if (material != null)
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('lib/assets/pictures/background-pattern.png'),
-                fit: BoxFit.cover,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                physics: const BouncingScrollPhysics(),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 16),
-                    _buildHTMLContent(material!.content),
-                    const SizedBox(height: 50), 
-                  ],
-                ),
-              ),
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text("Progress Completed!", textAlign: TextAlign.center),
+        content: Text(message, textAlign: TextAlign.center),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Sip!"),
             ),
           )
-        else
-          _buildEmptyOrLoadingState(),
-      ],
-    );
-  }
-
-  Widget _buildEmptyOrLoadingState() {
-    return Container(
-      decoration: const BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage('lib/assets/pictures/background-pattern.png'),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Center(
-        child: material == null 
-          ? const CircularProgressIndicator()
-          : Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Image.asset('lib/assets/pixels/material-pixel.png', height: 50),
-                const SizedBox(height: 16),
-                const Text(
-                  "Materi belum tersedia",
-                  style: TextStyle(fontSize: 16, color: AppColors.primaryColor, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
+        ],
       ),
     );
   }
 
   Widget _buildHTMLContent(String content) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 30),
-      child: HtmlWidget(
-        content,
-        textStyle: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 16),
-      ),
+    return HtmlWidget(
+      content,
+      textStyle: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 16, height: 1.5),
     );
   }
 }

@@ -1,9 +1,11 @@
 class TradeModel {
   final int id;
   final String title;
-  final String image;
+  final String image; // Akan berisi ID desain seperti "DESIGN_GOLD_ELITE"
   final String description;
-  final String requiredBadgeType;
+  final String category;
+  final String? requiredBadgeType;
+  final int priceInPoints;
   final DateTime createdAt;
   final DateTime updatedAt;
   bool hasTrade = false;
@@ -13,20 +15,24 @@ class TradeModel {
     required this.title,
     required this.image,
     required this.description,
-    required this.requiredBadgeType,
+    required this.category,
+    this.requiredBadgeType,
+    required this.priceInPoints,
     required this.createdAt,
     required this.updatedAt,
   });
 
   factory TradeModel.fromJson(Map<String, dynamic> json) {
     return TradeModel(
-        id: json['id'],
-        title: json['title'],
-        image: json['image'],
-        description: json['description'],
-        requiredBadgeType: json['requiredBadgeType'],
-        createdAt: DateTime.parse(json['createdAt']),
-        updatedAt: DateTime.parse(json['updatedAt'])
+      id: json['id'] ?? 0,
+      title: json['title'] ?? "",
+      image: json['image'] ?? "", // Proteksi Null: memberikan string kosong jika null
+      description: json['description'] ?? "",
+      category: json['category'] ?? "REWARD",
+      requiredBadgeType: json['requiredBadgeType'],
+      priceInPoints: json['priceInPoints'] ?? 0,
+      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
+      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : DateTime.now(),
     );
   }
 }

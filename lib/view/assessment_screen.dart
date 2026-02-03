@@ -9,12 +9,13 @@ import '../model/user.dart';
 import '../service/chapter_service.dart';
 import '../service/user_chapter_service.dart';
 import '../service/user_service.dart';
-import '../service/activity_service.dart'; // IMPORT BARU
+import '../service/activity_service.dart';
 import '../utils/colors.dart';
 
 class AssessmentScreen extends StatefulWidget {
   final ChapterStatus status;
   final Student user;
+  final String userType; 
   final Function(bool) updateMaterialLocked;
   final Function(ChapterStatus) updateStatus;
   final Function(bool) updateAssessmentStarted;
@@ -24,6 +25,7 @@ class AssessmentScreen extends StatefulWidget {
     super.key,
     required this.status,
     required this.user,
+    required this.userType,
     required this.updateMaterialLocked,
     required this.updateStatus,
     required this.updateAssessmentStarted,
@@ -74,7 +76,13 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   void _startTimer() {
     _timer?.cancel();
     if (question != null && question!.questions.isNotEmpty) {
-      _secondsRemaining = (question!.questions[_currentPage].type == 'EY') ? 60 : 30;
+      // RULES PROFILE: Time Pressure STRICTLY for Disruptors only
+      if (widget.userType == "Disruptors") {
+        _secondsRemaining = (question!.questions[_currentPage].type == 'EY') ? 40 : 15;
+      } else {
+        // Profil lain (Free Spirits, Achievers, Players) diberikan waktu sangat santai
+        _secondsRemaining = 999; 
+      }
     }
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -82,7 +90,10 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
         if (mounted) setState(() => _secondsRemaining--);
       } else {
         _timer?.cancel();
-        _handleTimeUp();
+        // Hanya Disruptors yang dipaksa pindah/submit saat waktu habis
+        if (widget.userType == "Disruptors") {
+          _handleTimeUp();
+        }
       }
     });
   }
@@ -180,20 +191,18 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     if (finalScore > 100) finalScore = 100;
 
     try {
-      // LOG TRIGGER: ACHIEVERS (Quiz Score)
       ActivityService.sendLog(
         userId: user!.id, 
         type: 'QUIZ_SCORE', 
         value: finalScore.toDouble()
       );
 
-      // LOG TRIGGER: DISRUPTORS (Anomaly Patterns - Selesai sangat cepat skor sempurna)
-      if (_secondsRemaining > 25 && finalScore == 100) {
+      if (widget.userType == "Disruptors" && _secondsRemaining > 10 && finalScore == 100) {
         ActivityService.sendLog(
           userId: user!.id, 
           type: 'ANOMALY_PATTERNS', 
           value: 1.0,
-          metadata: {"reason": "extremely_fast_completion"}
+          metadata: {"reason": "fast_disruptor_completion"}
         );
       }
 
@@ -208,10 +217,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       ]);
 
       await UserService.triggerChallengeManual(user!.id, 'FINISH_ASSESSMENT');
-
-      if (finalScore == 100) {
-        await UserService.triggerChallengeManual(user!.id, 'PERFECT_SCORE');
-      }
 
       if (mounted) {
         Navigator.pop(context);
@@ -242,82 +247,87 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       return _buildAssessmentInitial();
     }
 
-    return question != null && question!.questions.isNotEmpty
-        ? Container(
-            decoration: const BoxDecoration(
-                image: DecorationImage(
-                    image: AssetImage('lib/assets/pictures/background-pattern.png'),
-                    fit: BoxFit.cover)),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      LinearProgressIndicator(
-                          value: (_currentPage + 1) / question!.questions.length,
-                          backgroundColor: Colors.grey.shade300,
-                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
-                      const SizedBox(height: 10),
-                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Icon(LineAwesomeIcons.clock,
-                            color: _secondsRemaining < 10 ? Colors.red : Colors.black54,
-                            size: 20),
-                        const SizedBox(width: 8),
-                        Text("Sisa Waktu: $_secondsRemaining detik",
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _secondsRemaining < 10 ? Colors.red : Colors.black54)),
-                      ]),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: PageView.builder(
-                    controller: _pageController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: question!.questions.length,
-                    onPageChanged: (int page) {
-                      if (mounted) setState(() => _currentPage = page);
-                      _startTimer();
-                    },
-                    itemBuilder: (context, count) => Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: _buildSingleQuestion(count)),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primaryColor,
-                            padding: const EdgeInsets.symmetric(vertical: 12)),
-                        onPressed: () => _currentPage < question!.questions.length - 1
-                            ? _pageController.nextPage(
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeInOut)
-                            : _showFinishConfirmation(),
-                        icon: Icon(
-                            _currentPage < question!.questions.length - 1
-                                ? LineAwesomeIcons.arrow_right_solid
-                                : LineAwesomeIcons.check_solid,
-                            color: Colors.white),
-                        label: Text(
-                            _currentPage < question!.questions.length - 1
-                                ? 'Pertanyaan Berikutnya'
-                                : 'Kirim Jawaban',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      )),
-                ),
-              ],
+    bool isDisruptor = widget.userType == "Disruptors";
+
+    return Container(
+        decoration: const BoxDecoration(
+            image: DecorationImage(
+                image: AssetImage('lib/assets/pictures/background-pattern.png'),
+                fit: BoxFit.cover)),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  LinearProgressIndicator(
+                      value: (_currentPage + 1) / (question?.questions.length ?? 1),
+                      backgroundColor: Colors.grey.shade300,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
+                  const SizedBox(height: 10),
+                  // UI TIMER: Only shown prominently for Disruptors
+                  if (isDisruptor)
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(LineAwesomeIcons.clock,
+                          color: (isDisruptor || _secondsRemaining < 10) ? Colors.red : Colors.black54,
+                          size: 28), 
+                      const SizedBox(width: 8),
+                      Text("$_secondsRemaining DETIK!",
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red)),
+                    ]),
+                ],
+              ),
             ),
-          )
-        : const Center(child: CircularProgressIndicator());
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: question?.questions.length ?? 0,
+                onPageChanged: (int page) {
+                  if (mounted) setState(() => _currentPage = page);
+                  _startTimer();
+                },
+                itemBuilder: (context, count) => Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: _buildSingleQuestion(count)),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryColor,
+                        padding: const EdgeInsets.symmetric(vertical: 12)),
+                    onPressed: () => _currentPage < (question?.questions.length ?? 0) - 1
+                        ? _pageController.nextPage(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut)
+                        : _showFinishConfirmation(),
+                    icon: Icon(
+                        _currentPage < (question?.questions.length ?? 0) - 1
+                            ? LineAwesomeIcons.arrow_right_solid
+                            : LineAwesomeIcons.check_solid,
+                        color: Colors.white),
+                    label: Text(
+                        _currentPage < (question?.questions.length ?? 0) - 1
+                            ? 'Pertanyaan Berikutnya'
+                            : 'Kirim Jawaban',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  )),
+            ),
+          ],
+        ),
+      );
   }
 
   Widget _buildAssessmentInitial() {
+    bool isDisruptor = widget.userType == "Disruptors";
+
     return Container(
       decoration: const BoxDecoration(
           image: DecorationImage(
@@ -335,8 +345,14 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
                     fontWeight: FontWeight.bold,
                     fontFamily: 'DIN_Next_Rounded')),
             const SizedBox(height: 12),
-            const Text("Pilihan Ganda (30 detik) / Essay (60 detik)\nHanya diperbolehkan satu kali percobaan.",
-                textAlign: TextAlign.center),
+            Text(
+                isDisruptor
+                    ? "MODE TEKANAN: Waktu sangat terbatas!\nPilihan Ganda (15 detik) / Essay (40 detik)"
+                    : "Selesaikan pertanyaan berikut dengan teliti.\nChapter ini akan terbuka setelah assessment selesai.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: isDisruptor ? Colors.red : Colors.black87,
+                    fontWeight: isDisruptor ? FontWeight.bold : FontWeight.normal)),
             const SizedBox(height: 32),
             SizedBox(
                 width: double.infinity,
@@ -366,7 +382,7 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
               color: Colors.white, borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)]),
           child: Text("${number + 1}. ${q.question}",
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ),
@@ -416,6 +432,8 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   }
 
   Widget _buildQuizResult() {
+    bool isDisruptor = widget.userType == "Disruptors";
+
     return Container(
       decoration: const BoxDecoration(
           image: DecorationImage(
@@ -457,15 +475,26 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
             ]),
           ),
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text("Review Jawaban:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        // Whitelist: Review Jawaban for Free Spirits (and others), but NOT for Disruptors
+        if (!isDisruptor) ...[
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text("Review Jawaban:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ),
           ),
-        ),
-        if (question != null)
-          ...List.generate(question!.questions.length, (i) => _buildReviewCard(i)),
+          if (question != null)
+            ...List.generate(question!.questions.length, (i) => _buildReviewCard(i)),
+        ] else
+          const Padding(
+            padding: EdgeInsets.all(20.0),
+            child: Text(
+              "Review jawaban dinonaktifkan untuk profil Anda sesuai aturan Block Activity.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+            ),
+          ),
         const SizedBox(height: 40),
       ])),
     );

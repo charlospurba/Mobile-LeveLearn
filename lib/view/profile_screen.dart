@@ -11,6 +11,7 @@ import 'package:app/view/about_app.dart';
 import 'package:app/view/quick_access_screen.dart';
 import 'package:app/view/trade_screen.dart';
 import 'package:app/view/update_profile_screeen.dart';
+import 'package:app/view/avatar_frame_painter.dart'; 
 import 'package:flutter/material.dart';
 import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,7 +55,8 @@ class _ProfileState extends State<ProfileScreen> {
 
   // --- VARIABLE UNTUK CLUSTER DINAMIS ---
   String userType = "Disruptors"; 
-  final String apiBaseUrl = "http://10.241.247.43:7000/api"; // IP Hotspot Anda terbaru
+  String? currentFrameDesignId; // ID Bingkai Aktif
+  final String apiBaseUrl = "http://10.106.207.43:7000/api"; 
 
   List<AvatarModel> availableAvatars = [
     AvatarModel(id: 1, imageUrl: 'lib/assets/avatars/avatar1.jpeg', price: 0),
@@ -83,13 +85,10 @@ class _ProfileState extends State<ProfileScreen> {
       final idUser = prefs.getInt('userId');
 
       if (idUser != null) {
-        // 1. Ambil data user dasar
         Student fetchedUser = await UserService.getUserById(idUser);
-        
-        // 2. Ambil Profil Adaptif (Cluster) dari Database
         await fetchAdaptiveProfile(idUser);
+        await fetchEquippedFrame(idUser); 
 
-        // 3. Ambil data pendukung secara paralel
         final results = await Future.wait([
           BadgeService.getUserBadgeListByUserId(idUser),
           UserService.getAllUser(),
@@ -132,7 +131,23 @@ class _ProfileState extends State<ProfileScreen> {
     }
   }
 
-  // --- FUNGSI FETCH CLUSTER ---
+  Future<void> fetchEquippedFrame(int userId) async {
+    try {
+      final response = await http.get(Uri.parse("$apiBaseUrl/usertrade/equipped/$userId"));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Perbaikan TypeError: Cek null pada data dan trade image
+        if (mounted && data != null && data['trade'] != null) {
+          setState(() => currentFrameDesignId = data['trade']['image']?.toString());
+        } else {
+          setState(() => currentFrameDesignId = null);
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal fetch bingkai: $e");
+    }
+  }
+
   Future<void> fetchAdaptiveProfile(int idUser) async {
     final String url = "$apiBaseUrl/user/adaptive/$idUser";
     try {
@@ -143,7 +158,6 @@ class _ProfileState extends State<ProfileScreen> {
           setState(() {
             userType = data['currentCluster'] ?? "Disruptors";
           });
-          debugPrint("PROFILE SCREEN SYNC SUCCESS: $userType");
         }
       }
     } catch (e) {
@@ -165,21 +179,17 @@ class _ProfileState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (user == null) return const Scaffold(body: Center(child: Text("User data not found")));
 
-    if (user == null) {
-      return const Scaffold(body: Center(child: Text("User data not found")));
-    }
+    bool isDisruptor = userType == "Disruptors";
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: GlobalVar.primaryColor,
         automaticallyImplyLeading: false,
         elevation: 0,
-        title: const Text("Profile",
-            style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
+        title: const Text("Profile", style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
       ),
       body: Stack(
         children: [
@@ -195,10 +205,10 @@ class _ProfileState extends State<ProfileScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 children: [
-                  _buildProfileHeader(),
+                  _buildProfileHeader(isDisruptor),
                   const SizedBox(height: 10),
-                  _buildMyBadgesSection(),
-                  _buildMenuSection(),
+                  if (!isDisruptor) _buildMyBadgesSection(),
+                  _buildMenuSection(isDisruptor),
                   const SizedBox(height: 20),
                   _buildLogoutButton(),
                   const SizedBox(height: 30),
@@ -211,9 +221,8 @@ class _ProfileState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildProfileHeader() {
-    // Logika Warna Label berdasarkan Cluster
-    Color labelColor = Colors.amber[700]!;
+  Widget _buildProfileHeader(bool isDisruptor) {
+    Color labelColor = Colors.red; 
     if (userType == "Achievers") labelColor = Colors.blue;
     if (userType == "Players") labelColor = Colors.orange;
     if (userType == "Free Spirits") labelColor = Colors.teal;
@@ -222,86 +231,40 @@ class _ProfileState extends State<ProfileScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         color: GlobalVar.primaryColor,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(30),
-          bottomRight: Radius.circular(30),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
       ),
       padding: const EdgeInsets.only(bottom: 32, top: 20),
       child: Column(
         children: [
-          _buildAvatarStack(),
+          _buildAvatarStack(), 
           const SizedBox(height: 15),
-          Text(
-            user?.name ?? "",
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              fontFamily: 'DIN_Next_Rounded',
-              color: Colors.white,
-              letterSpacing: 0.5,
-            ),
-          ),
+          Text(user?.name ?? "", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
           const SizedBox(height: 8),
-          // --- LABEL CLUSTER DINAMIS ---
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: labelColor,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Text(
-              userType.toUpperCase(), // Akan menampilkan FREE SPIRITS, ACHIEVERS, dll.
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                letterSpacing: 1.2,
-              ),
-            ),
+            decoration: BoxDecoration(color: labelColor, borderRadius: BorderRadius.circular(20)),
+            child: Text(userType.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
           ),
-          const SizedBox(height: 6),
-          Text(user?.studentId ?? "",
-              style: const TextStyle(fontFamily: 'DIN_Next_Rounded', color: GlobalVar.accentColor)),
           const SizedBox(height: 25),
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(25.0),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
-            ),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(25.0), border: Border.all(color: Colors.white.withOpacity(0.2))),
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    BadgeStat(count: userBadges?.length ?? 0),
+                    if (!isDisruptor) BadgeStat(count: userBadges?.length ?? 0),
                     CourseStat(count: allCourses?.length ?? 0),
                     RankStat(rank: rank, total: list.length),
-                    StreakStat(days: streakDays),
+                    if (userType != "Disruptors" && userType != "Free Spirits" && userType != "Achievers") StreakStat(days: streakDays),
                   ],
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(color: Colors.white24),
-                ),
-                TotalPoints(points: user?.points ?? 0),
+                if (!isDisruptor) ...[
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(color: Colors.white24)),
+                  TotalPoints(points: user?.points ?? 0),
+                ],
               ],
             ),
           ),
@@ -310,51 +273,46 @@ class _ProfileState extends State<ProfileScreen> {
     );
   }
 
-  // --- Bagian widget lainnya tetap sama ---
   Widget _buildAvatarStack() {
     return Stack(
+      alignment: Alignment.center,
       children: [
         Container(
           width: 120,
           height: 120,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 4),
-          ),
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(100),
             child: user?.image != null && user!.image!.isNotEmpty
                 ? (user!.image!.startsWith('lib/assets/')
                     ? Image.asset(user!.image!, fit: BoxFit.cover)
-                    : Image.network(
-                        user!.image!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.person, size: 80, color: Colors.white),
-                      ))
+                    : Image.network(user!.image!, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.person, size: 80, color: Colors.white)))
                 : const Icon(Icons.person, size: 80, color: Colors.white),
           ),
         ),
+        
+        // Perbaikan TypeError: Pastikan designId tidak null sebelum CustomPaint
+        if (currentFrameDesignId != null && currentFrameDesignId!.isNotEmpty && currentFrameDesignId != "null")
+          IgnorePointer(
+            child: SizedBox(
+              width: 140, 
+              height: 140,
+              child: CustomPaint(
+                painter: AvatarFramePainter(currentFrameDesignId!),
+              ),
+            ),
+          ),
+
         Positioned(
-          bottom: 0,
-          right: 0,
+          bottom: 0, right: 0,
           child: GestureDetector(
             onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => UpdateProfile(
-                        user: user!, availableAvatars: availableAvatars)),
-              );
+              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!, availableAvatars: availableAvatars)));
               if (result == true) getUserData();
             },
             child: Container(
-              width: 35,
-              height: 35,
-              decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: GlobalVar.secondaryColor,
-                  border: Border.all(color: Colors.white, width: 2)),
+              width: 35, height: 35,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: GlobalVar.secondaryColor, border: Border.all(color: Colors.white, width: 2)),
               child: const Icon(LineAwesomeIcons.pencil_alt_solid, color: Colors.white, size: 18),
             ),
           ),
@@ -367,23 +325,12 @@ class _ProfileState extends State<ProfileScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), spreadRadius: 2, blurRadius: 10)
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), spreadRadius: 2, blurRadius: 10)]),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('My Badges',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: GlobalVar.primaryColor,
-                  fontFamily: 'DIN_Next_Rounded')),
+          const Text('My Badges', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: GlobalVar.primaryColor, fontFamily: 'DIN_Next_Rounded')),
           const SizedBox(height: 12),
           SizedBox(
             height: 70,
@@ -394,73 +341,38 @@ class _ProfileState extends State<ProfileScreen> {
                     itemBuilder: (context, index) {
                       final badge = userBadges![index].badge;
                       if (badge == null) return const SizedBox();
-
-                      String fixUrl = badge.image ?? "";
-                      if (fixUrl.contains("badges//")) {
-                        fixUrl = fixUrl.replaceAll("badges//", "badges/");
-                      }
-
+                      String fixUrl = badge.image?.replaceAll("badges//", "badges/") ?? "";
                       return GestureDetector(
                         onTap: () => _showBadgeDetails(context, badge),
                         child: Padding(
                           padding: const EdgeInsets.only(right: 12),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: fixUrl.isNotEmpty
-                                ? Image.network(
-                                    fixUrl,
-                                    width: 60,
-                                    height: 60,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        Image.asset('lib/assets/pictures/icon.png', width: 60),
-                                  )
-                                : Image.asset('lib/assets/pictures/icon.png', width: 60),
+                            child: fixUrl.isNotEmpty ? Image.network(fixUrl, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: 60)) : Image.asset('lib/assets/pictures/icon.png', width: 60),
                           ),
                         ),
                       );
                     },
                   )
-                : const Center(
-                    child: Text('No badges earned yet',
-                        style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.grey))),
+                : const Center(child: Text('No badges earned yet', style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.grey))),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMenuSection() {
+  Widget _buildMenuSection(bool isDisruptor) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       child: Column(
         children: [
-          ProfileMenuWidget(
-              title: "Trades",
-              icon: LineAwesomeIcons.coins_solid,
-              onPress: () => Navigator.push(
-                  context, MaterialPageRoute(builder: (context) => TradeScreen(user: user!)))),
-          ProfileMenuWidget(
-              title: "Update Profile",
-              icon: LineAwesomeIcons.person_booth_solid,
-              onPress: () async {
-                final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => UpdateProfile(
-                            user: user!, availableAvatars: availableAvatars)));
-                if (result == true) getUserData();
-              }),
-          ProfileMenuWidget(
-              title: "Quick Access",
-              icon: LineAwesomeIcons.accessible_icon,
-              onPress: () => Navigator.push(
-                  context, MaterialPageRoute(builder: (context) => const QuickAccessScreen()))),
-          ProfileMenuWidget(
-              title: "About App",
-              icon: LineAwesomeIcons.info_circle_solid,
-              onPress: () => Navigator.push(
-                  context, MaterialPageRoute(builder: (context) => const AboutAppScreen()))),
+          if (!isDisruptor) ProfileMenuWidget(title: "Trades", icon: LineAwesomeIcons.coins_solid, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TradeScreen(user: user!)))),
+          ProfileMenuWidget(title: "Update Profile", icon: LineAwesomeIcons.person_booth_solid, onPress: () async {
+            final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!, availableAvatars: availableAvatars)));
+            if (result == true) getUserData();
+          }),
+          ProfileMenuWidget(title: "Quick Access", icon: LineAwesomeIcons.accessible_icon, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const QuickAccessScreen()))),
+          ProfileMenuWidget(title: "About App", icon: LineAwesomeIcons.info_circle_solid, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutAppScreen()))),
         ],
       ),
     );
@@ -471,14 +383,7 @@ class _ProfileState extends State<ProfileScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: SizedBox(
         width: double.infinity,
-        child: ElevatedButton(
-            onPressed: logout,
-            style: ElevatedButton.styleFrom(
-                backgroundColor: GlobalVar.primaryColor,
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(vertical: 15)),
-            child: const Text("Log Out",
-                style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white))),
+        child: ElevatedButton(onPressed: logout, style: ElevatedButton.styleFrom(backgroundColor: GlobalVar.primaryColor, shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(vertical: 15)), child: const Text("Log Out", style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white))),
       ),
     );
   }
@@ -487,7 +392,6 @@ class _ProfileState extends State<ProfileScreen> {
     try {
       Course resCourse = await CourseService.getCourse(badge.courseId);
       Chapter resChapter = await ChapterService.getChapterById(badge.chapterId);
-      
       if (!mounted) return;
       showDialog(
         context: context,
@@ -497,45 +401,23 @@ class _ProfileState extends State<ProfileScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: badge.image != null 
-                  ? Image.network(badge.image!, fit: BoxFit.cover, height: 100) 
-                  : Image.asset('lib/assets/pictures/icon.png', height: 100),
-              ),
+              ClipRRect(borderRadius: BorderRadius.circular(16), child: badge.image != null ? Image.network(badge.image!, fit: BoxFit.cover, height: 100) : Image.asset('lib/assets/pictures/icon.png', height: 100)),
               const SizedBox(height: 16),
-              Text(badge.name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'DIN_Next_Rounded',
-                      color: AppColors.primaryColor,
-                      fontSize: 18)),
+              Text(badge.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor, fontSize: 18)),
               Text('(${badge.type})', style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
               const SizedBox(height: 12),
-              Text('Earned by completing ${resCourse.courseName} up to chapter ${resChapter.name}',
-                  textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 13)),
+              Text('Earned by completing ${resCourse.courseName} up to chapter ${resChapter.name}', textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 13)),
             ],
           ),
-          actions: [
-            SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Close', style: TextStyle(color: Colors.white)))),
-          ],
+          actions: [SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor), onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white))))],
         ),
       );
-    } catch (e) {
-      debugPrint("Error show badge: $e");
-    }
+    } catch (e) { debugPrint("Error show badge: $e"); }
   }
 }
 
 class ProfileMenuWidget extends StatelessWidget {
-  const ProfileMenuWidget(
-      {super.key, required this.title, required this.icon, required this.onPress, this.endIcon = true, this.textColor});
+  const ProfileMenuWidget({super.key, required this.title, required this.icon, required this.onPress, this.endIcon = true, this.textColor});
   final String title;
   final IconData icon;
   final VoidCallback onPress;
@@ -546,16 +428,8 @@ class ProfileMenuWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       onTap: onPress,
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(100), color: AppColors.primaryColor.withOpacity(0.1)),
-        child: Icon(icon, color: AppColors.primaryColor),
-      ),
-      title: Text(title,
-          style: TextStyle(
-              color: textColor, fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.w600)),
+      leading: Container(width: 40, height: 40, decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), color: AppColors.primaryColor.withOpacity(0.1)), child: Icon(icon, color: AppColors.primaryColor)),
+      title: Text(title, style: TextStyle(color: textColor, fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.w600)),
       trailing: endIcon ? const Icon(LineAwesomeIcons.angle_right_solid, size: 18.0, color: Colors.grey) : null,
     );
   }

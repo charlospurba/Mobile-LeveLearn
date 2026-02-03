@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 
 class ChapterStatus {
@@ -41,50 +40,41 @@ class ChapterStatus {
   });
 
   factory ChapterStatus.fromJson(Map<String, dynamic> json) {
-    if (json['assessmentAnswer'].runtimeType == String) {
-      final resultListAnswer = (jsonDecode(json['assessmentAnswer']) as List)
-          .map((item) => item.toString()) // Convert each item to String
-          .toList();
-      return ChapterStatus(
-        id: json['id'],
-        userId: json['userId'],
-        chapterId: json['chapterId'],
-        isStarted: json['isStarted'],
-        isCompleted: json['isCompleted'],
-        materialDone: json['materialDone'],
-        assessmentDone: json['assessmentDone'],
-        assignmentDone: json['assignmentDone'],
-        assessmentAnswer: resultListAnswer,
-        assessmentGrade: json['assessmentGrade'],
-        submission: json['submission'],
-        timeStarted: DateTime.parse(json['timeStarted']),
-        timeFinished: DateTime.parse(json['timeFinished']),
-        assignmentScore: json['assignmentScore'] ?? 0,
-        assignmentFeedback: json['assignmentFeedback'] ?? '',
-        createdAt: DateTime.parse(json['createdAt']),
-        updatedAt: DateTime.parse(json['updatedAt']),
-      );
-    } else {
-      return ChapterStatus(
-        id: json['id'],
-        userId: json['userId'],
-        chapterId: json['chapterId'],
-        isStarted: json['isStarted'],
-        isCompleted: json['isCompleted'],
-        materialDone: json['materialDone'],
-        assessmentDone: json['assessmentDone'],
-        assignmentDone: json['assignmentDone'],
-        assessmentAnswer: json['assessmentAnswer'],
-        assessmentGrade: json['assessmentGrade'],
-        submission: json['submission'],
-        timeStarted: DateTime.parse(json['timeStarted']),
-        timeFinished: DateTime.parse(json['timeFinished']),
-        assignmentScore: json['assignmentScore'] ?? 0,
-        assignmentFeedback: json['assignmentFeedback'] ?? '',
-        createdAt: DateTime.parse(json['createdAt']),
-        updatedAt: DateTime.parse(json['updatedAt']),
-      );
+    // Helper untuk menangani list jawaban baik dari string JSON maupun list langsung
+    List<String> parseAnswers(dynamic answers) {
+      if (answers == null) return [];
+      if (answers is String) {
+        try {
+          return (jsonDecode(answers) as List).map((e) => e.toString()).toList();
+        } catch (_) {
+          return [];
+        }
+      }
+      if (answers is List) {
+        return answers.map((e) => e.toString()).toList();
+      }
+      return [];
     }
+
+    return ChapterStatus(
+      id: json['id'],
+      userId: json['userId'],
+      chapterId: json['chapterId'],
+      isStarted: json['isStarted'] ?? false,
+      isCompleted: json['isCompleted'] ?? false,
+      materialDone: json['materialDone'] ?? false,
+      assessmentDone: json['assessmentDone'] ?? false,
+      assignmentDone: json['assignmentDone'] ?? false,
+      assessmentAnswer: parseAnswers(json['assessmentAnswer']),
+      assessmentGrade: json['assessmentGrade'] ?? 0,
+      submission: json['submission'],
+      timeStarted: DateTime.parse(json['timeStarted'] ?? DateTime.now().toIso8601String()),
+      timeFinished: DateTime.parse(json['timeFinished'] ?? DateTime.now().toIso8601String()),
+      assignmentScore: json['assignmentScore'] ?? 0,
+      assignmentFeedback: json['assignmentFeedback'] ?? '',
+      createdAt: DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
+      updatedAt: DateTime.parse(json['updatedAt'] ?? DateTime.now().toIso8601String()),
+    );
   }
 
   Map<String, dynamic> toJson() {
@@ -97,7 +87,7 @@ class ChapterStatus {
       'materialDone': materialDone,
       'assessmentDone': assessmentDone,
       'assignmentDone': assignmentDone,
-      'assessmentAnswer': assessmentAnswer,
+      'assessmentAnswer': jsonEncode(assessmentAnswer), // Encode ke string JSON untuk DB
       'assessmentGrade': assessmentGrade,
       'submission': submission,
       'timeStarted': timeStarted.toUtc().toIso8601String(),

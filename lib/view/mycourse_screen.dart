@@ -7,7 +7,7 @@ import '../model/course.dart';
 import 'course_detail_screen.dart';
 
 Color purple = AppColors.primaryColor;
-Color backgroundNavHex = Color(0xFFF3EDF7);
+Color backgroundNavHex = const Color(0xFFF3EDF7);
 const url = 'https://www.globalcareercounsellor.com/blog/wp-content/uploads/2018/05/Online-Career-Counselling-course.jpg';
 
 class MycourseScreen extends StatefulWidget {
@@ -36,7 +36,6 @@ class _CourseDetail extends State<MycourseScreen> {
     });
 
     _searchController.addListener(_filterCourses);
-    filteredCourses = List.from(allCourses); // Initially show all courses
   }
 
   @override
@@ -68,7 +67,7 @@ class _CourseDetail extends State<MycourseScreen> {
     String query = _searchController.text.toLowerCase().trim();
     if (query.isEmpty) {
       setState(() {
-        filteredCourses = List.from(allCourses); // Reset list if empty
+        filteredCourses = List.from(allCourses);
       });
       return;
     }
@@ -79,7 +78,7 @@ class _CourseDetail extends State<MycourseScreen> {
     }).toList();
 
     setState(() {
-      filteredCourses = newFilteredList; // Ensures UI updates immediately
+      filteredCourses = newFilteredList;
     });
   }
 
@@ -106,10 +105,10 @@ class _CourseDetail extends State<MycourseScreen> {
       child: Stack(
         children: [
           Container(
-            decoration: BoxDecoration(
-              color: Colors.white, // Change this to your desired background color
+            decoration: const BoxDecoration(
+              color: Colors.white,
               image: DecorationImage(
-                image: AssetImage("lib/assets/learnbg.png"), // Background image
+                image: AssetImage("lib/assets/learnbg.png"),
                 fit: BoxFit.cover,
                 opacity: 0.7
               ),
@@ -132,7 +131,7 @@ class _CourseDetail extends State<MycourseScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Padding(
+                    const Padding(
                       padding: EdgeInsets.symmetric(vertical: 15),
                       child: Center(child: Text('Enrolled Course', style: TextStyle(fontSize: 24, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),),
                     ),
@@ -154,8 +153,8 @@ class _CourseDetail extends State<MycourseScreen> {
       focusNode: _focusNode,
       decoration: InputDecoration(
         hintText: _isFocused ? "" : 'Mau belajar apa hari ini?',
-        hintStyle: TextStyle(color: Colors.grey, fontFamily: 'DIN_Next_Rounded',),
-        prefixIcon: Icon(Icons.search, color: Colors.grey),
+        hintStyle: const TextStyle(color: Colors.grey, fontFamily: 'DIN_Next_Rounded',),
+        prefixIcon: const Icon(Icons.search, color: Colors.grey),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
         fillColor: Colors.white,
@@ -165,35 +164,12 @@ class _CourseDetail extends State<MycourseScreen> {
 
   Widget _listCourse() {
     return filteredCourses.isEmpty
-    ? Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage(
-                'lib/assets/pictures/background-pattern.png'
-            ),
-            fit: BoxFit.cover,
-          ),
+    ? Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'Kamu belum ada terdaftar pada course apapun',
-                  style: TextStyle(
-                    fontFamily: 'DIN_Next_Rounded'
-                  ),
-                )
-              ],
-            ),
-          ),
-        ),
-      ),
-    )
+        child: const Center(child: Text('Kamu belum terdaftar di course apapun', style: TextStyle(fontFamily: 'DIN_Next_Rounded'))),
+      )
     : ListView.builder(
       itemCount: filteredCourses.length,
       itemBuilder: (context, count) {
@@ -209,47 +185,39 @@ class _CourseDetail extends State<MycourseScreen> {
     return GestureDetector(
       onTap: () async {
         await pref.setInt('lastestSelectedCourse', course.id);
-            Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CourseInitialScreen(id: course.id),
-          ),
-        );
+        if (!mounted) return;
+        Navigator.push(context, MaterialPageRoute(builder: (context) => CourseInitialScreen(id: course.id)));
       },
       child: Card(
         clipBehavior: Clip.antiAliasWithSaveLayer,
-        semanticContainer: true,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10.0),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
         color: AppColors.primaryColor,
         elevation: 5,
-        margin: EdgeInsets.all(10),
-        child:  Column(
+        margin: const EdgeInsets.all(10),
+        child: Column(
           children: [
-            course.image != '' ?
-            Image.network(course.image, height: 100, width: double.infinity, fit: BoxFit.cover)
-                : Image.network(url, height: 100, width: double.infinity, fit: BoxFit.cover),
+            course.image != '' 
+              ? Image.network(course.image, height: 100, width: double.infinity, fit: BoxFit.cover)
+              : Image.network(url, height: 100, width: double.infinity, fit: BoxFit.cover),
             ListTile(
-              title: Text(course.codeCourse.toUpperCase(), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.accentColor, fontFamily: 'DIN_Next_Rounded'),),
+              title: Text(course.codeCourse.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.accentColor, fontFamily: 'DIN_Next_Rounded'),),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(course.courseName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),
-                  Text(course.description!, style: TextStyle(fontSize: 13, color: Colors.white, fontFamily: 'DIN_Next_Rounded',), maxLines: 2, overflow: TextOverflow.ellipsis,),
-                  SizedBox(height: 10,),
+                  Text(course.courseName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),
+                  Text(course.description ?? "", style: const TextStyle(fontSize: 13, color: Colors.white, fontFamily: 'DIN_Next_Rounded',), maxLines: 2, overflow: TextOverflow.ellipsis,),
+                  const SizedBox(height: 10,),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(15), // Ensure the child gets rounded corners
+                    borderRadius: BorderRadius.circular(15),
                     child: LinearProgressIndicator(
                       backgroundColor: Colors.white24,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.secondaryColor),
-                      value: course.progress! / 100,
+                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.secondaryColor),
+                      value: (course.progress ?? 0) / 100,
                       minHeight: 10,
-                      borderRadius: BorderRadius.circular(15),
                     ),
                   ),
-                  SizedBox(height: 10,),
-                  Text(progressSentence(course.progress!), style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),
+                  const SizedBox(height: 10,),
+                  Text(progressSentence(course.progress ?? 0), style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),
                 ],
               ),
             ),
