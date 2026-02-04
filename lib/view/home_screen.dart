@@ -207,10 +207,10 @@ class _HomeState extends State<Homescreen> {
                           _buildProfileHeader(clusterColor, clusterIcon),
                           _buildAdaptiveGreeting(clusterColor, clusterIcon), 
                           
-                          // 1. STATS DASHBOARD (Berisi Badges, Course, Rank, Streak, Points)
+                          // 1. STATS DASHBOARD
                           _buildStatsDashboard(),
 
-                          // 2. CHALLENGE (Whitelist: Achievers & Free Spirits)
+                          // 2. CHALLENGE
                           if (userType == "Achievers" || userType == "Free Spirits")
                             ChallengeWidget(
                               challenges: myChallenges, 
@@ -219,15 +219,13 @@ class _HomeState extends State<Homescreen> {
                               onRefresh: () { _initialLoad(); },
                             ),
 
-                          // 3. PROGRESS CARD (Whitelist: Semua kecuali Players)
-                          // Berdasarkan aturan Anda, Players tidak punya Progress Bar di whitelist
+                          // 3. PROGRESS CARD
                           if (userType != "Players")
                             ProgressCard(lastestCourse: lastestCourse, onTap: () => widget.updateIndex(2)),
 
                           _buildExploreSection(),
 
-                          // 4. LEADERBOARD (Whitelist: Achievers, Players, Disruptors)
-                          // Free Spirits TIDAK memiliki Leaderboard di whitelist
+                          // 4. LEADERBOARD
                           if (userType != "Free Spirits")
                             LeaderboardList(students: list),
 
@@ -311,31 +309,28 @@ class _HomeState extends State<Homescreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.start, 
                 children: [
-                  // WHITELIST: Badges (Achievers, Free Spirits)
+                  // Badges
                   if (userType == "Achievers" || userType == "Free Spirits") ...[
                     BadgeStat(count: userBadges?.length ?? 0),
                     const SizedBox(width: 24),
                   ],
-                  // WHITELIST: Progress/Course (Achievers, Free Spirits, Disruptors)
-                  // Players TIDAK memiliki Course/Progress di aturan Anda
-                  if (userType != "Players") ...[
+                  // MODIFIKASI: CourseStat muncul untuk profil Players
+                  if (userType == "Achievers" || userType == "Free Spirits" || userType == "Disruptors" || userType == "Players") ...[
                     CourseStat(count: allCourses.length),
                     const SizedBox(width: 24),
                   ],
-                  // WHITELIST: Rank/Leaderboard (Achievers, Players, Disruptors)
-                  // Free Spirits TIDAK memiliki Leaderboard/Rank
+                  // Rank
                   if (userType != "Free Spirits") ...[
                     RankStat(rank: rank, total: list.length),
                     const SizedBox(width: 24),
                   ],
-                  // WHITELIST: Streak (Hanya Players)
+                  // Streak
                   if (userType == "Players")
                     StreakStat(days: streakDays),
                 ],
               ), 
               const SizedBox(height: 25), 
-              // WHITELIST: Point/XP (Achievers, Players, Free Spirits)
-              // Disruptors TIDAK memiliki Point/XP di aturan Anda
+              // Point/XP
               if (userType != "Disruptors")
                 TotalPoints(points: user?.points ?? 0)
             ],

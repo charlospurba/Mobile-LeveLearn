@@ -136,7 +136,6 @@ class _ProfileState extends State<ProfileScreen> {
       final response = await http.get(Uri.parse("$apiBaseUrl/usertrade/equipped/$userId"));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Perbaikan TypeError: Cek null pada data dan trade image
         if (mounted && data != null && data['trade'] != null) {
           setState(() => currentFrameDesignId = data['trade']['image']?.toString());
         } else {
@@ -183,6 +182,8 @@ class _ProfileState extends State<ProfileScreen> {
     if (user == null) return const Scaffold(body: Center(child: Text("User data not found")));
 
     bool isDisruptor = userType == "Disruptors";
+    // Tambahkan kondisi deteksi profil Players
+    bool isPlayer = userType == "Players";
 
     return Scaffold(
       appBar: AppBar(
@@ -205,9 +206,10 @@ class _ProfileState extends State<ProfileScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 children: [
-                  _buildProfileHeader(isDisruptor),
+                  _buildProfileHeader(isDisruptor, isPlayer),
                   const SizedBox(height: 10),
-                  if (!isDisruptor) _buildMyBadgesSection(),
+                  // Sembunyikan MyBadgesSection jika Disruptors ATAU Players
+                  if (!isDisruptor && !isPlayer) _buildMyBadgesSection(),
                   _buildMenuSection(isDisruptor),
                   const SizedBox(height: 20),
                   _buildLogoutButton(),
@@ -221,7 +223,7 @@ class _ProfileState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildProfileHeader(bool isDisruptor) {
+  Widget _buildProfileHeader(bool isDisruptor, bool isPlayer) {
     Color labelColor = Colors.red; 
     if (userType == "Achievers") labelColor = Colors.blue;
     if (userType == "Players") labelColor = Colors.orange;
@@ -255,7 +257,8 @@ class _ProfileState extends State<ProfileScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    if (!isDisruptor) BadgeStat(count: userBadges?.length ?? 0),
+                    // Sembunyikan BadgeStat jika Disruptors ATAU Players
+                    if (!isDisruptor && !isPlayer) BadgeStat(count: userBadges?.length ?? 0),
                     CourseStat(count: allCourses?.length ?? 0),
                     RankStat(rank: rank, total: list.length),
                     if (userType != "Disruptors" && userType != "Free Spirits" && userType != "Achievers") StreakStat(days: streakDays),
@@ -291,7 +294,6 @@ class _ProfileState extends State<ProfileScreen> {
           ),
         ),
         
-        // Perbaikan TypeError: Pastikan designId tidak null sebelum CustomPaint
         if (currentFrameDesignId != null && currentFrameDesignId!.isNotEmpty && currentFrameDesignId != "null")
           IgnorePointer(
             child: SizedBox(
