@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:convert'; // Untuk jsonDecode
-import 'package:http/http.dart' as http; // Untuk pemanggilan API
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 import 'package:app/global_var.dart';
 import 'package:app/model/chapter.dart';
@@ -50,23 +50,17 @@ class _CourseDetail extends State<CourseDetailScreen> {
     _initialLoad();
   }
 
-  // ALUR SINKRONISASI: Menjamin data cluster didapat sebelum merender chapter
   Future<void> _initialLoad() async {
     pref = await SharedPreferences.getInstance();
     idCourse = pref.getInt('lastestSelectedCourse') ?? 0;
     idUser = pref.getInt('userId') ?? 0;
 
     if (idUser != 0) {
-      // 1. Ambil data User & Cluster terlebih dahulu
       await getUser(idUser);
-      
-      // 2. Ambil detail Course & Metadata lainnya
       if (idCourse != 0) {
         courseDetail = await CourseService.getCourse(idCourse);
         uc = await UserCourseService.getUserCourse(idUser, idCourse);
         await getListBadge(idCourse);
-        
-        // 3. Ambil chapter
         await getChapter(idCourse);
       }
     }
@@ -84,13 +78,11 @@ class _CourseDetail extends State<CourseDetailScreen> {
     final fetchedUser = await UserService.getUserById(id);
     if (fetchedUser != null) {
       if (mounted) setState(() => user = fetchedUser);
-      // Tunggu hingga sinkronisasi cluster selesai
       await fetchAdaptiveProfile(id);
     }
   }
 
   Future<void> fetchAdaptiveProfile(int id) async {
-    // Gunakan IP laptop aktif Anda: 10.106.207.43
     final String url = "http://10.106.207.43:7000/api/user/adaptive/$id";
     try {
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
@@ -100,9 +92,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
           setState(() {
             userType = data['currentCluster'] ?? "Disruptors";
           });
-          debugPrint("SYNC SUCCESS: Profile is $userType");
-          
-          // Force reload chapters untuk memastikan logika open/lock terbaru diterapkan
           if (idCourse != 0) getChapter(idCourse);
         }
       }
@@ -170,164 +159,158 @@ class _CourseDetail extends State<CourseDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return _buildDetailCourse();
-  }
-
-  Widget _buildDetailCourse() {
-    return Stack(
-      children: [
-        Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            image: DecorationImage(
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          // Background Pattern Dasar
+          Container(
+            decoration: const BoxDecoration(
+              image: DecorationImage(
                 image: AssetImage("lib/assets/learnbg.png"),
                 fit: BoxFit.cover,
-                opacity: 0.15),
-          ),
-        ),
-        Positioned(
-          top: 0, left: 0, right: 0, height: 120,
-          child: Container(
-            decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF441F7F), Color(0xFF3A206C)],
-                ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(24),
-                  bottomRight: Radius.circular(24),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
-                  )
-                ]),
-            child: SafeArea(
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 10, left: 20,
-                    child: Image.asset(
-                      "lib/assets/LeveLearn.png",
-                      width: 150,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.center,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'Course Level',
-                            style: TextStyle(
-                                fontFamily: 'DIN_Next_Rounded',
-                                fontWeight: FontWeight.bold,
-                                fontSize: 20,
-                                color: Colors.white,
-                                letterSpacing: 1.2),
-                          ),
-                          Container(
-                            margin: const EdgeInsets.only(top: 2),
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: Text(
-                              courseDetail?.courseName ?? "Loading...",
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontFamily: 'DIN_Next_Rounded',
-                                fontSize: 13,
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                ],
+                opacity: 0.1,
               ),
             ),
           ),
-        ),
-        idCourse != 0 && courseDetail != null
-            ? Scaffold(
-                backgroundColor: Colors.transparent,
-                appBar: AppBar(
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  toolbarHeight: 0,
-                  automaticallyImplyLeading: false,
+          
+          CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              // HEADER YANG BISA DISCROLL (SliverAppBar)
+              SliverAppBar(
+                expandedHeight: 180.0,
+                floating: false,
+                pinned: true, // Menjaga bagian kecil tetap di atas saat scroll
+                elevation: 0,
+                backgroundColor: const Color(0xFF441F7F),
+                automaticallyImplyLeading: false,
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.asset(
+                        "lib/assets/gamification.jpeg",
+                        fit: BoxFit.cover,
+                      ),
+                      Container(
+                        color: const Color(0xFF441F7F).withOpacity(0.6),
+                      ),
+                      SafeArea(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(height: 20),
+                            const Text(
+                              'COURSE PROGRESS',
+                              style: TextStyle(
+                                  fontFamily: 'DIN_Next_Rounded',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 22,
+                                  color: Colors.white,
+                                  letterSpacing: 1.2),
+                            ),
+                            const SizedBox(height: 5),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 30),
+                              child: Text(
+                                courseDetail?.courseName ?? "Loading...",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontFamily: 'DIN_Next_Rounded',
+                                  fontSize: 14,
+                                  color: Colors.white70,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                body: isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(top: 130, bottom: 40, left: 20, right: 20),
-                        itemCount: listChapter.length,
-                        itemBuilder: (context, count) {
-                          return TweenAnimationBuilder<double>(
-                            duration: Duration(milliseconds: 500 + (count * 150)),
-                            tween: Tween<double>(begin: 0.0, end: 1.0),
-                            curve: Curves.easeOutBack,
-                            builder: (context, value, child) {
-                              return Transform.translate(
-                                offset: Offset(0, 100 * (1 - value)),
-                                child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
-                              );
-                            },
-                            child: Stack(
-                              alignment: Alignment.topCenter,
-                              clipBehavior: Clip.none,
-                              children: [
-                                if (count < listChapter.length - 1)
-                                  Positioned(
-                                    left: 0, right: 0, bottom: -50, top: 80,
-                                    child: Center(
-                                      child: Container(
-                                        width: 6,
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFD1C4E9),
-                                          borderRadius: BorderRadius.circular(3),
+                // Tombol Back & Logo di bar paling atas saat pinned
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    Image.asset("lib/assets/LeveLearn.png", width: 100),
+                    const SizedBox(width: 40),
+                  ],
+                ),
+              ),
+
+              // DAFTAR CHAPTER (SliverList)
+              isLoading
+                  ? const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(20, 30, 20, 40),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, count) {
+                            return TweenAnimationBuilder<double>(
+                              duration: Duration(milliseconds: 500 + (count * 100)),
+                              tween: Tween<double>(begin: 0.0, end: 1.0),
+                              curve: Curves.easeOut,
+                              builder: (context, value, child) {
+                                return Opacity(
+                                  opacity: value,
+                                  child: Transform.translate(
+                                    offset: Offset(0, 30 * (1 - value)),
+                                    child: child,
+                                  ),
+                                );
+                              },
+                              child: Stack(
+                                alignment: Alignment.topCenter,
+                                clipBehavior: Clip.none,
+                                children: [
+                                  if (count < listChapter.length - 1)
+                                    Positioned(
+                                      left: 0, right: 0, bottom: -50, top: 80,
+                                      child: Center(
+                                        child: Container(
+                                          width: 4,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFD1C4E9),
+                                            borderRadius: BorderRadius.circular(2),
+                                          ),
                                         ),
                                       ),
                                     ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 24.0),
+                                    child: _decideChapterItem(count),
                                   ),
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 24.0),
-                                  child: _decideChapterItem(count),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                                ],
+                              ),
+                            );
+                          },
+                          childCount: listChapter.length,
+                        ),
                       ),
-              )
-            : const SizedBox(),
-      ],
+                    ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _decideChapterItem(int index) {
     if (uc == null) return const SizedBox();
-
-    // --- WHITELIST UNTUK FREE SPIRITS, PLAYERS, & ACHIEVERS: TERBUKA TOTAL ---
-    // Profil Achievers kini disamakan dengan Players & Free Spirits (Akses terbuka semua)
     if (userType == "Free Spirits" || userType == "Players" || userType == "Achievers") {
       return _buildCourseItem(index);
     }
 
-    // --- LOGIKA UNTUK PROFIL LAIN (DISRUPTORS) ---
-    
-    // 1. Cek progres level normal berdasarkan urutan database (berlaku untuk Disruptors)
     bool isUnlockedByLevel = index <= uc!.currentChapter - 1;
-
-    // 2. Logika Block Activity (HANYA UNTUK DISRUPTORS)
     bool isStrictlyBlocked = false;
     String blockMessage = "Selesaikan level sebelumnya!";
 
@@ -335,16 +318,14 @@ class _CourseDetail extends State<CourseDetailScreen> {
       if (index > 0) {
         final prevChapterStatus = listChapter[index - 1].status;
         if (prevChapterStatus != null) {
-          // Disruptors dikunci jika materi ATAU kuis level sebelumnya belum 100% tuntas
           if (!prevChapterStatus.materialDone || !prevChapterStatus.assessmentDone) {
             isStrictlyBlocked = true;
-            blockMessage = "LEVEL TERKUNCI: Selesaikan Materi & Kuis level ${index}!";
+            blockMessage = "LEVEL TERKUNCI: Selesaikan Materi & Kuis level $index!";
           }
         }
       }
     }
 
-    // Tampilkan gembok jika: Level belum sampai (progres normal) ATAU diblokir secara kaku (khusus Disruptor)
     if (!isUnlockedByLevel || isStrictlyBlocked) {
       return _buildCourseItemLocked(index, blockMessage);
     } else {
@@ -356,8 +337,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
     final chapter = listChapter[index];
     final isCurrent = uc != null && index == uc!.currentChapter - 1;
 
-    // --- LOGIKA JUDUL KHUSUS PLAYERS & ACHIEVERS ---
-    // Jika profil Players atau Achievers, tambahkan prefix "Level X - " sebelum nama chapter guna memenuhi kebutuhan visual progres
     String displayTitle = (userType == "Players" || userType == "Achievers") 
         ? "Level ${chapter.level} - ${chapter.name}" 
         : chapter.name;
@@ -373,9 +352,9 @@ class _CourseDetail extends State<CourseDetailScreen> {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF4A148C).withOpacity(0.25),
-                  blurRadius: 15,
-                  offset: const Offset(0, 8),
+                  color: const Color(0xFF4A148C).withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
                 ),
               ],
             ),
@@ -386,9 +365,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
                 borderRadius: BorderRadius.circular(24),
                 onTap: () async {
                   if (uc != null) {
-                    uc!.currentChapter = uc!.currentChapter < chapter.level
-                        ? chapter.level
-                        : uc!.currentChapter;
+                    uc!.currentChapter = uc!.currentChapter < chapter.level ? chapter.level : uc!.currentChapter;
                     updateUserCourse();
                   }
                   if (chapter.status != null && !chapter.status!.isStarted) {
@@ -415,8 +392,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
 
                   if (result != null) {
                     setState(() {
-                      listChapter[result['index']].status =
-                          ChapterStatus.fromJson(result['status']);
+                      listChapter[result['index']].status = ChapterStatus.fromJson(result['status']);
                     });
                   }
                 },
@@ -437,16 +413,16 @@ class _CourseDetail extends State<CourseDetailScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _buildStatusIcon(chapter.status?.materialDone ?? false, Icons.menu_book, "Materi"),
+                            _buildStatusIcon(chapter.status?.materialDone ?? false, Icons.menu_book),
                             const SizedBox(width: 15),
-                            _buildStatusIcon(chapter.status?.assessmentDone ?? false, Icons.task_alt, "Kuis"),
+                            _buildStatusIcon(chapter.status?.assessmentDone ?? false, Icons.task_alt),
                             const SizedBox(width: 15),
-                            _buildStatusIcon(chapter.status?.assignmentDone ?? false, Icons.assignment, "Tugas"),
+                            _buildStatusIcon(chapter.status?.assignmentDone ?? false, Icons.assignment),
                           ],
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          displayTitle, // Menggunakan displayTitle (Format Khusus Players & Achievers)
+                          displayTitle,
                           textAlign: TextAlign.center,
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white, fontFamily: 'DIN_Next_Rounded'),
                         ),
@@ -464,8 +440,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                   colors: isCurrent ? [const Color(0xFF00E676), const Color(0xFF00C853)] : [Colors.grey.shade400, Colors.grey.shade600],
                 ),
                 border: Border.all(color: Colors.white, width: 3),
@@ -503,9 +477,8 @@ class _CourseDetail extends State<CourseDetailScreen> {
               padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 20),
               child: Column(
                 children: [
-                  Icon(Icons.lock_rounded, size: 40, color: Colors.grey.shade400),
+                  Icon(Icons.lock_rounded, size: 40, color: Colors.grey.shade300),
                   const SizedBox(height: 12),
-                  // Teks berwarna MERAH jika aturan kaku Disruptors aktif
                   Text(message, 
                     textAlign: TextAlign.center, 
                     style: TextStyle(
@@ -538,14 +511,14 @@ class _CourseDetail extends State<CourseDetailScreen> {
     );
   }
 
-  Widget _buildStatusIcon(bool isDone, IconData icon, String label) {
+  Widget _buildStatusIcon(bool isDone, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: isDone ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.1),
         shape: BoxShape.circle,
       ),
-      child: Icon(icon, size: 18, color: isDone ? const Color(0xFFFFD700) : Colors.white38),
+      child: Icon(icon, size: 18, color: isDone ? const Color(0xFFFFD700) : Colors.white24),
     );
   }
 }
