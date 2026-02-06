@@ -23,15 +23,15 @@ class GlobalVar {
     // On Android emulator (Android Studio), use 10.0.2.2
     // On iOS simulator, use 127.0.0.1
     try {
-      if (Platform.isAndroid) return 'http://10.0.2.2:7000/api';
-      if (Platform.isIOS) return 'http://127.0.0.1:7000/api';
+      if (Platform.isAndroid) return 'http://10.106.207.43:7000/api';
+      if (Platform.isIOS) return 'http://10.106.207.43:7000/api';
     } catch (_) {
       // if Platform is not available for some reason, fall back below
     }
 
     // Fallback: use your machine LAN IP so physical devices can reach it.
     // Replace with your PC's IP on Wi‑Fi (example from your server logs).
-    return 'http://192.168.0.118:7000/api';
+    return 'http://10.106.207.43:7000/api';
   }
 
   // Example other service URL (you can also adapt like baseUrl if needed)

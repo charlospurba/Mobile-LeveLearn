@@ -194,7 +194,7 @@ class _HomeState extends State<Homescreen> {
         children: [
           _buildBackgroundVector(),
           Container(
-            decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover)),
+            decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover, opacity: 0.1)),
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
@@ -255,7 +255,11 @@ class _HomeState extends State<Homescreen> {
                 const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(color: clusterColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: clusterColor.withOpacity(0.5))),
+                  decoration: BoxDecoration(
+                    color: clusterColor.withOpacity(0.1), 
+                    borderRadius: BorderRadius.circular(20), 
+                    border: Border.all(color: clusterColor.withOpacity(0.5))
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -270,7 +274,14 @@ class _HomeState extends State<Homescreen> {
           ),
           GestureDetector(
             onTap: () => widget.updateIndex(4),
-            child: CircleAvatar(radius: 30, backgroundColor: Colors.grey[200], backgroundImage: user?.image != null && user?.image != "" ? NetworkImage(user!.image!) : null, child: user?.image == null || user?.image == "" ? const Icon(Icons.person, size: 30) : null),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)]
+              ),
+              child: CircleAvatar(radius: 30, backgroundColor: Colors.grey[200], backgroundImage: user?.image != null && user?.image != "" ? NetworkImage(user!.image!) : null, child: user?.image == null || user?.image == "" ? const Icon(Icons.person, size: 30) : null),
+            ),
           ),
         ],
       ),
@@ -287,9 +298,20 @@ class _HomeState extends State<Homescreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
-        child: Row(children: [ Icon(icon, color: color), const SizedBox(width: 12), Expanded(child: Text(greeting, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontFamily: 'DIN_Next_Rounded')))]),
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: Colors.white, 
+          borderRadius: BorderRadius.circular(16), 
+          boxShadow: [BoxShadow(color: color.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
+          border: Border.all(color: color.withOpacity(0.2))
+        ),
+        child: Row(
+          children: [ 
+            Icon(icon, color: color), 
+            const SizedBox(width: 12), 
+            Expanded(child: Text(greeting, style: TextStyle(fontWeight: FontWeight.bold, color: color, fontFamily: 'DIN_Next_Rounded', fontSize: 15)))
+          ]
+        ),
       ),
     );
   }
@@ -297,43 +319,44 @@ class _HomeState extends State<Homescreen> {
   Widget _buildStatsDashboard() { 
     return Padding(
       padding: const EdgeInsets.all(16.0), 
-      child: Card(
-        elevation: 8, 
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
-        child: Container(
-          padding: const EdgeInsets.all(20), 
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), image: const DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover)), 
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start, 
-            children: [ 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.start, 
-                children: [
-                  // Badges
-                  if (userType == "Achievers" || userType == "Free Spirits") ...[
-                    BadgeStat(count: userBadges?.length ?? 0),
-                    const SizedBox(width: 24),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))]
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(20), 
+            decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover)), 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [ 
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.start, 
+                  children: [
+                    if (userType == "Achievers" || userType == "Free Spirits") ...[
+                      BadgeStat(count: userBadges?.length ?? 0),
+                      const SizedBox(width: 24),
+                    ],
+                    // MODIFIKASI: CourseStat sekarang muncul juga untuk Players
+                    if (userType == "Achievers" || userType == "Free Spirits" || userType == "Disruptors" || userType == "Players") ...[
+                      CourseStat(count: allCourses.length),
+                      const SizedBox(width: 24),
+                    ],
+                    if (userType != "Free Spirits") ...[
+                      RankStat(rank: rank, total: list.length),
+                      const SizedBox(width: 24),
+                    ],
+                    if (userType == "Players")
+                      StreakStat(days: streakDays),
                   ],
-                  // MODIFIKASI: CourseStat muncul untuk profil Players
-                  if (userType == "Achievers" || userType == "Free Spirits" || userType == "Disruptors" || userType == "Players") ...[
-                    CourseStat(count: allCourses.length),
-                    const SizedBox(width: 24),
-                  ],
-                  // Rank
-                  if (userType != "Free Spirits") ...[
-                    RankStat(rank: rank, total: list.length),
-                    const SizedBox(width: 24),
-                  ],
-                  // Streak
-                  if (userType == "Players")
-                    StreakStat(days: streakDays),
-                ],
-              ), 
-              const SizedBox(height: 25), 
-              // Point/XP
-              if (userType != "Disruptors")
-                TotalPoints(points: user?.points ?? 0)
-            ],
+                ), 
+                const SizedBox(height: 25), 
+                if (userType != "Disruptors")
+                  TotalPoints(points: user?.points ?? 0)
+              ],
+            ),
           ),
         ),
       ),
@@ -344,20 +367,28 @@ class _HomeState extends State<Homescreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start, 
       children: [ 
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('Explore Courses', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded'))), 
-        const SizedBox(height: 10), 
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10), child: Text('Explore Courses', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded'))), 
         allCourses.isEmpty ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet."))) 
         : CarouselSlider.builder(
             itemCount: allCourses.length, 
-            options: CarouselOptions(height: 180, viewportFraction: allCourses.length == 1 ? 0.9 : 0.7, enlargeCenterPage: true, enableInfiniteScroll: allCourses.length > 1, autoPlay: allCourses.length > 1), 
+            options: CarouselOptions(height: 190, viewportFraction: allCourses.length == 1 ? 0.9 : 0.75, enlargeCenterPage: true, enableInfiniteScroll: allCourses.length > 1, autoPlay: allCourses.length > 1), 
             itemBuilder: (context, index, realIndex) { 
               final course = allCourses[index]; 
               return GestureDetector(
                 onTap: () { pref.setInt('lastestSelectedCourse', course.id); setState(() { lastestCourse = course; }); widget.updateIndex(2); }, 
                 child: Container(
-                  margin: const EdgeInsets.all(5), 
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), image: DecorationImage(image: course.image != "" ? NetworkImage(course.image) : const AssetImage('lib/assets/pictures/imk-picture.jpg') as ImageProvider, fit: BoxFit.cover)), 
-                  child: Container(alignment: Alignment.bottomLeft, padding: const EdgeInsets.all(10), decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.7)])), child: Text(course.courseName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')))
+                  margin: const EdgeInsets.symmetric(vertical: 5), 
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20), 
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4))],
+                    image: DecorationImage(image: course.image != "" ? NetworkImage(course.image) : const AssetImage('lib/assets/pictures/imk-picture.jpg') as ImageProvider, fit: BoxFit.cover)
+                  ), 
+                  child: Container(
+                    alignment: Alignment.bottomLeft, 
+                    padding: const EdgeInsets.all(15), 
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.8)])), 
+                    child: Text(course.courseName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'))
+                  )
                 )
               ); 
             }
@@ -366,5 +397,5 @@ class _HomeState extends State<Homescreen> {
     ); 
   }
 
-  Widget _buildBackgroundVector() { return Positioned(bottom: 0, right: 0, child: Opacity(opacity: 0.2, child: Image.asset("lib/assets/vectors/learn.png", width: 200, height: 200))); }
+  Widget _buildBackgroundVector() { return Positioned(bottom: -20, right: -20, child: Opacity(opacity: 0.15, child: Image.asset("lib/assets/vectors/learn.png", width: 220, height: 220))); }
 }
