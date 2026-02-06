@@ -320,7 +320,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
         if (prevChapterStatus != null) {
           if (!prevChapterStatus.materialDone || !prevChapterStatus.assessmentDone) {
             isStrictlyBlocked = true;
-            blockMessage = "LEVEL TERKUNCI: Selesaikan Materi & Kuis level $index!";
+            blockMessage = "CHAPTER TERKUNCI: Selesaikan Materi & Kuis level $index!";
           }
         }
       }
