@@ -22,7 +22,6 @@ import '../service/course_service.dart';
 import '../utils/colors.dart';
 import 'login_screen.dart';
 
-// IMPORT KOMPONEN GAMIFIKASI MODULAR
 import 'package:app/view/gamification/badge_stat.dart';
 import 'package:app/view/gamification/course_stat.dart';
 import 'package:app/view/gamification/rank_stat.dart';
@@ -53,10 +52,10 @@ class _ProfileState extends State<ProfileScreen> {
   List<Course>? allCourses;
   int streakDays = 0;
 
-  // --- VARIABLE UNTUK CLUSTER DINAMIS ---
   String userType = "Disruptors"; 
-  String? currentFrameDesignId; // ID Bingkai Aktif
+  String? currentFrameDesignId; 
   final String apiBaseUrl = "http://10.106.207.43:7000/api"; 
+  final String serverIp = "10.106.207.43";
 
   List<AvatarModel> availableAvatars = [
     AvatarModel(id: 1, imageUrl: 'lib/assets/avatars/avatar1.jpeg', price: 0),
@@ -77,6 +76,15 @@ class _ProfileState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     getUserData();
+  }
+
+  // Helper untuk membersihkan URL
+  String formatUrl(String? url) {
+    if (url == null || url.isEmpty) return "";
+    if (url.startsWith('lib/assets/')) return url;
+    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
+    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
+    return url;
   }
 
   Future<void> getUserData() async {
@@ -182,7 +190,6 @@ class _ProfileState extends State<ProfileScreen> {
     if (user == null) return const Scaffold(body: Center(child: Text("User data not found")));
 
     bool isDisruptor = userType == "Disruptors";
-    // Tambahkan kondisi deteksi profil Players
     bool isPlayer = userType == "Players";
 
     return Scaffold(
@@ -208,7 +215,6 @@ class _ProfileState extends State<ProfileScreen> {
                 children: [
                   _buildProfileHeader(isDisruptor, isPlayer),
                   const SizedBox(height: 10),
-                  // Sembunyikan MyBadgesSection jika Disruptors ATAU Players
                   if (!isDisruptor && !isPlayer) _buildMyBadgesSection(),
                   _buildMenuSection(isDisruptor),
                   const SizedBox(height: 20),
@@ -257,7 +263,6 @@ class _ProfileState extends State<ProfileScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // Sembunyikan BadgeStat jika Disruptors ATAU Players
                     if (!isDisruptor && !isPlayer) BadgeStat(count: userBadges?.length ?? 0),
                     CourseStat(count: allCourses?.length ?? 0),
                     RankStat(rank: rank, total: list.length),
@@ -277,6 +282,7 @@ class _ProfileState extends State<ProfileScreen> {
   }
 
   Widget _buildAvatarStack() {
+    String? imgPath = user?.image;
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -286,10 +292,10 @@ class _ProfileState extends State<ProfileScreen> {
           decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(100),
-            child: user?.image != null && user!.image!.isNotEmpty
-                ? (user!.image!.startsWith('lib/assets/')
-                    ? Image.asset(user!.image!, fit: BoxFit.cover)
-                    : Image.network(user!.image!, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.person, size: 80, color: Colors.white)))
+            child: imgPath != null && imgPath.isNotEmpty
+                ? (imgPath.startsWith('lib/assets/')
+                    ? Image.asset(imgPath, fit: BoxFit.cover)
+                    : Image.network(formatUrl(imgPath), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.person, size: 80, color: Colors.white)))
                 : const Icon(Icons.person, size: 80, color: Colors.white),
           ),
         ),
@@ -343,14 +349,16 @@ class _ProfileState extends State<ProfileScreen> {
                     itemBuilder: (context, index) {
                       final badge = userBadges![index].badge;
                       if (badge == null) return const SizedBox();
-                      String fixUrl = badge.image?.replaceAll("badges//", "badges/") ?? "";
+                      String fixUrl = formatUrl(badge.image?.replaceAll("badges//", "badges/"));
                       return GestureDetector(
                         onTap: () => _showBadgeDetails(context, badge),
                         child: Padding(
                           padding: const EdgeInsets.only(right: 12),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: fixUrl.isNotEmpty ? Image.network(fixUrl, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: 60)) : Image.asset('lib/assets/pictures/icon.png', width: 60),
+                            child: fixUrl.startsWith('lib/assets/') 
+                                ? Image.asset(fixUrl, width: 60, height: 60)
+                                : Image.network(fixUrl, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: 60)),
                           ),
                         ),
                       );
@@ -403,7 +411,9 @@ class _ProfileState extends State<ProfileScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(borderRadius: BorderRadius.circular(16), child: badge.image != null ? Image.network(badge.image!, fit: BoxFit.cover, height: 100) : Image.asset('lib/assets/pictures/icon.png', height: 100)),
+              ClipRRect(borderRadius: BorderRadius.circular(16), child: badge.image != null 
+                  ? (badge.image!.startsWith('lib/assets/') ? Image.asset(badge.image!, height: 100) : Image.network(formatUrl(badge.image!), fit: BoxFit.cover, height: 100))
+                  : Image.asset('lib/assets/pictures/icon.png', height: 100)),
               const SizedBox(height: 16),
               Text(badge.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor, fontSize: 18)),
               Text('(${badge.type})', style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),

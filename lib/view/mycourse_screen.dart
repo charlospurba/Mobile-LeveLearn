@@ -4,17 +4,16 @@ import 'package:app/view/course_initial_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../model/course.dart';
-import 'course_detail_screen.dart';
 
-Color purple = AppColors.primaryColor;
-Color backgroundNavHex = const Color(0xFFF3EDF7);
-const url = 'https://www.globalcareercounsellor.com/blog/wp-content/uploads/2018/05/Online-Career-Counselling-course.jpg';
+// Import GlobalVar jika Anda meletakkan fungsi formatUrl di sana, 
+// atau gunakan variabel lokal seperti di bawah ini.
+import 'package:app/global_var.dart';
 
 class MycourseScreen extends StatefulWidget {
   const MycourseScreen({super.key});
 
   @override
-  State<MycourseScreen> createState()  => _CourseDetail();
+  State<MycourseScreen> createState() => _CourseDetail();
 }
 
 class _CourseDetail extends State<MycourseScreen> {
@@ -24,6 +23,10 @@ class _CourseDetail extends State<MycourseScreen> {
   late SharedPreferences pref;
   List<Course> allCourses = [];
   List<Course> filteredCourses = [];
+  
+  // Konfigurasi IP untuk akses gambar dari server lokal
+  final String serverIp = "10.106.207.43";
+  final String defaultImageUrl = 'https://www.globalcareercounsellor.com/blog/wp-content/uploads/2018/05/Online-Career-Counselling-course.jpg';
 
   @override
   void initState() {
@@ -36,6 +39,15 @@ class _CourseDetail extends State<MycourseScreen> {
     });
 
     _searchController.addListener(_filterCourses);
+  }
+
+  // Fungsi helper untuk memperbaiki URL gambar agar muncul di HP
+  String formatUrl(String? url) {
+    if (url == null || url.isEmpty) return "";
+    if (url.startsWith('lib/assets/')) return url;
+    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
+    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
+    return url;
   }
 
   @override
@@ -182,6 +194,20 @@ class _CourseDetail extends State<MycourseScreen> {
   }
 
   Widget _buildCourseItem(Course course) {
+    // Menentukan sumber gambar (Asset vs Network)
+    ImageProvider courseImage;
+    String formattedUrl = formatUrl(course.image);
+
+    if (course.image != null && course.image.isNotEmpty) {
+      if (course.image.startsWith('lib/assets/')) {
+        courseImage = AssetImage(course.image);
+      } else {
+        courseImage = NetworkImage(formattedUrl);
+      }
+    } else {
+      courseImage = NetworkImage(defaultImageUrl);
+    }
+
     return GestureDetector(
       onTap: () async {
         await pref.setInt('lastestSelectedCourse', course.id);
@@ -196,9 +222,21 @@ class _CourseDetail extends State<MycourseScreen> {
         margin: const EdgeInsets.all(10),
         child: Column(
           children: [
-            course.image != '' 
-              ? Image.network(course.image, height: 100, width: double.infinity, fit: BoxFit.cover)
-              : Image.network(url, height: 100, width: double.infinity, fit: BoxFit.cover),
+            // PERBAIKAN TAMPILAN GAMBAR
+            Image(
+              image: courseImage,
+              height: 140, // Sedikit lebih tinggi agar proporsional
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Image.asset(
+                  'lib/assets/pictures/imk-picture.jpg', 
+                  height: 140, 
+                  width: double.infinity, 
+                  fit: BoxFit.cover
+                );
+              },
+            ),
             ListTile(
               title: Text(course.codeCourse.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.accentColor, fontFamily: 'DIN_Next_Rounded'),),
               subtitle: Column(

@@ -7,6 +7,7 @@ import 'package:app/model/user_challenge.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app/global_var.dart'; // Import GlobalVar untuk fungsi formatUrl
 
 import '../model/course.dart';
 import '../model/user_badge.dart';
@@ -50,11 +51,21 @@ class _HomeState extends State<Homescreen> {
   String userType = "Disruptors";
 
   final String apiBaseUrl = "http://10.106.207.43:7000/api";
+  final String serverIp = "10.106.207.43"; // IP Laptop Anda
 
   @override
   void initState() {
     super.initState();
     _initialLoad(); 
+  }
+
+  // FUNGSI HELPER UNTUK FIX GAMBAR
+  String formatUrl(String? url) {
+    if (url == null || url.isEmpty) return "";
+    if (url.startsWith('lib/assets/')) return url;
+    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
+    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
+    return url;
   }
 
   Future<void> _initialLoad() async {
@@ -207,10 +218,8 @@ class _HomeState extends State<Homescreen> {
                           _buildProfileHeader(clusterColor, clusterIcon),
                           _buildAdaptiveGreeting(clusterColor, clusterIcon), 
                           
-                          // 1. STATS DASHBOARD
                           _buildStatsDashboard(),
 
-                          // 2. CHALLENGE
                           if (userType == "Achievers" || userType == "Free Spirits")
                             ChallengeWidget(
                               challenges: myChallenges, 
@@ -219,13 +228,11 @@ class _HomeState extends State<Homescreen> {
                               onRefresh: () { _initialLoad(); },
                             ),
 
-                          // 3. PROGRESS CARD
                           if (userType != "Players")
                             ProgressCard(lastestCourse: lastestCourse, onTap: () => widget.updateIndex(2)),
 
                           _buildExploreSection(),
 
-                          // 4. LEADERBOARD
                           if (userType != "Free Spirits")
                             LeaderboardList(students: list),
 
@@ -241,6 +248,7 @@ class _HomeState extends State<Homescreen> {
   }
 
   Widget _buildProfileHeader(Color clusterColor, IconData clusterIcon) {
+    String? img = user?.image;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
@@ -280,7 +288,17 @@ class _HomeState extends State<Homescreen> {
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)]
               ),
-              child: CircleAvatar(radius: 30, backgroundColor: Colors.grey[200], backgroundImage: user?.image != null && user?.image != "" ? NetworkImage(user!.image!) : null, child: user?.image == null || user?.image == "" ? const Icon(Icons.person, size: 30) : null),
+              child: CircleAvatar(
+                radius: 30, 
+                backgroundColor: Colors.grey[200], 
+                // LOGIKA PERBAIKAN GAMBAR PROFILE
+                backgroundImage: img != null && img != "" 
+                  ? (img.startsWith('lib/assets/') 
+                      ? AssetImage(img) as ImageProvider
+                      : NetworkImage(formatUrl(img))) 
+                  : null, 
+                child: img == null || img == "" ? const Icon(Icons.person, size: 30) : null
+              ),
             ),
           ),
         ],
@@ -339,7 +357,6 @@ class _HomeState extends State<Homescreen> {
                       BadgeStat(count: userBadges?.length ?? 0),
                       const SizedBox(width: 24),
                     ],
-                    // MODIFIKASI: CourseStat sekarang muncul juga untuk Players
                     if (userType == "Achievers" || userType == "Free Spirits" || userType == "Disruptors" || userType == "Players") ...[
                       CourseStat(count: allCourses.length),
                       const SizedBox(width: 24),
@@ -381,7 +398,15 @@ class _HomeState extends State<Homescreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20), 
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4))],
-                    image: DecorationImage(image: course.image != "" ? NetworkImage(course.image) : const AssetImage('lib/assets/pictures/imk-picture.jpg') as ImageProvider, fit: BoxFit.cover)
+                    // LOGIKA PERBAIKAN GAMBAR COURSE
+                    image: DecorationImage(
+                      image: course.image != "" 
+                        ? (course.image.startsWith('lib/assets/') 
+                            ? AssetImage(course.image) as ImageProvider
+                            : NetworkImage(formatUrl(course.image)))
+                        : const AssetImage('lib/assets/pictures/imk-picture.jpg'), 
+                      fit: BoxFit.cover
+                    )
                   ), 
                   child: Container(
                     alignment: Alignment.bottomLeft, 

@@ -1,48 +1,36 @@
-// lib/global_var.dart
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 class GlobalVar {
-  // Singleton
   static final GlobalVar _instance = GlobalVar._internal();
   factory GlobalVar() => _instance;
   GlobalVar._internal();
 
-  // Example image URL (unchanged)
-  static const String imageUrl =
-      'https://www.globalcareercounsellor.com/blog/wp-content/uploads/2018/05/Online-Career-Counselling-course.jpg';
+  // IP Laptop Anda (Pastikan HP terhubung ke Wi-Fi yang sama)
+  static const String serverIp = '10.106.207.43';
+  static const String port = '7000';
 
-  // Compute baseUrl depending on runtime environment.
-  // NOTE: this file imports dart:io and so is intended for mobile (Android/iOS).
-  // If you need to build for Flutter Web, ask me for a web-safe variant.
   static String get baseUrl {
-    // Web (browser) should use localhost
-    if (kIsWeb) return 'http://localhost:7000/api';
-
-    // On Android emulator (Android Studio), use 10.0.2.2
-    // On iOS simulator, use 127.0.0.1
-    try {
-      if (Platform.isAndroid) return 'http://10.106.207.43:7000/api';
-      if (Platform.isIOS) return 'http://10.106.207.43:7000/api';
-    } catch (_) {
-      // if Platform is not available for some reason, fall back below
-    }
-
-    // Fallback: use your machine LAN IP so physical devices can reach it.
-    // Replace with your PC's IP on Wi‑Fi (example from your server logs).
-    return 'http://10.106.207.43:7000/api';
+    if (kIsWeb) return 'http://localhost:$port/api';
+    return 'http://$serverIp:$port/api';
   }
 
-  // Example other service URL (you can also adapt like baseUrl if needed)
-  static String similiarityEssayUrl =
-      'http://192.168.1.3:8081/evaluate/'; // adjust if required
+  // --- VARIABEL YANG TADI HILANG ---
+  static String similiarityEssayUrl = 'http://$serverIp:8081/evaluate/'; 
 
-  // App colors
+static String formatImageUrl(String? url) {
+  const String serverIp = '10.106.207.43';
+  if (url == null || url.isEmpty) return "";
+  if (url.startsWith('lib/assets/')) return url;
+  if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
+  if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
+  return url;
+}
+
   static const Color primaryColor = Color.fromARGB(255, 68, 31, 127);
   static const Color secondaryColor = Color.fromARGB(255, 26, 173, 33);
   static const Color accentColor = Color.fromARGB(255, 221, 200, 255);
 }
 
-// Create an instance if you prefer to use it directly
 final globalVars = GlobalVar();

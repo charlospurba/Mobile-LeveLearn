@@ -6,6 +6,7 @@ import 'package:app/service/trade_service.dart';
 import 'package:app/service/activity_service.dart';
 import 'package:app/service/user_service.dart'; 
 import 'package:app/utils/colors.dart';
+import 'package:app/global_var.dart';
 import 'package:app/view/main_screen.dart';
 import 'package:app/view/trade_detail_screen.dart';
 import 'package:app/view/avatar_frame_painter.dart'; 
@@ -25,8 +26,9 @@ class _TradeScreenState extends State<TradeScreen> {
   List<TradeModel> trades = [];
   List<UserTrade> userTrade = [];
   bool isLoading = true;
-  String userType = "Players"; // Default cluster
+  String userType = "Players"; 
   int currentPoints = 0; 
+  final String serverIp = "10.106.207.43"; 
 
   @override
   void initState() {
@@ -36,13 +38,19 @@ class _TradeScreenState extends State<TradeScreen> {
     ActivityService.sendLog(userId: widget.user.id, type: 'EXPLORATION_EVENTS', value: 1.0);
   }
 
+  String formatUrl(String? url) {
+    if (url == null || url.isEmpty) return "";
+    if (url.startsWith('lib/assets/')) return url;
+    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
+    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
+    return url;
+  }
+
   Future<void> _fetchUserTypeAndData() async {
     try {
-      // 1. Fetch Adaptive Profile menggunakan URL spesifik Anda
       final String url = "http://10.106.207.43:7000/api/user/adaptive/${widget.user.id}";
       final profileResponse = await http.get(Uri.parse(url));
       
-      // 2. Sync data user & trades
       final Student updatedUser = await UserService.getUserById(widget.user.id);
       final allTrades = await TradeService.getAllTrades();
       final ownedTrades = await TradeService.getUserTrade(widget.user.id);
@@ -52,7 +60,6 @@ class _TradeScreenState extends State<TradeScreen> {
       setState(() {
         currentPoints = updatedUser.points ?? 0;
         
-        // Parsing cluster dari API adaptive
         if (profileResponse.statusCode == 200) {
           final data = jsonDecode(profileResponse.body);
           userType = data['currentCluster'] ?? "Players";
@@ -61,7 +68,6 @@ class _TradeScreenState extends State<TradeScreen> {
         trades = allTrades;
         userTrade = ownedTrades;
         
-        // Map owned status
         final tradeIds = userTrade.map((t) => t.tradeId).toSet();
         for (var t in trades) {
           t.hasTrade = tradeIds.contains(t.id);
@@ -76,7 +82,6 @@ class _TradeScreenState extends State<TradeScreen> {
 
   void _equipFrameAction(int tradeId) async {
     try {
-      // Endpoint internal untuk pasang bingkai
       final response = await http.post(
         Uri.parse("http://10.106.207.43:7000/api/usertrade/equip"),
         headers: {"Content-Type": "application/json"},
@@ -95,18 +100,13 @@ class _TradeScreenState extends State<TradeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // FILTER DATA
     final avatarItems = trades.where((t) => t.category == "AVATAR" || t.title.toLowerCase().contains('avatar')).toList();
     final rewardTrades = trades.where((t) => t.category == "REWARD" && !t.title.toLowerCase().contains('avatar')).toList();
     final shopFrames = trades.where((t) => t.category == "FRAME").toList();
 
-    // LOGIKA KONDISI ADAPTIVE
     bool showRewards = userType != "Disruptors";
-    
-    // Shop DISEMBUNYIKAN jika user adalah Achievers atau Free Spirits
     bool showShop = (userType != "Achievers" && userType != "Free Spirits"); 
     
-    // Hitung jumlah tab secara dinamis
     int tabCount = 1; 
     if (showRewards) tabCount++;
     if (showShop) tabCount++;
@@ -160,6 +160,9 @@ class _TradeScreenState extends State<TradeScreen> {
       itemCount: items.length,
       itemBuilder: (context, index) {
         final item = items[index];
+        String imgPath = item.image;
+        bool isLocal = imgPath.startsWith('lib/assets/');
+
         return Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
@@ -167,10 +170,16 @@ class _TradeScreenState extends State<TradeScreen> {
               const SizedBox(height: 10),
               Expanded(
                 child: Center(
-                  child: item.image.isNotEmpty && !item.image.startsWith("DESIGN_")
+                  child: imgPath.isNotEmpty && !imgPath.startsWith("DESIGN_")
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(10),
-                        child: Image.network(item.image, width: 70, height: 70, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Icon(Icons.face, size: 50)),
+                        child: isLocal
+                          ? Image.asset(imgPath, width: 70, height: 70, fit: BoxFit.cover)
+                          : Image.network(
+                              formatUrl(imgPath), 
+                              width: 70, height: 70, fit: BoxFit.cover, 
+                              errorBuilder: (c,e,s) => const Icon(Icons.face, size: 50)
+                            ),
                       )
                     : const Icon(Icons.face, size: 50),
                 ),
