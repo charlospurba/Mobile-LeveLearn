@@ -1,6 +1,7 @@
 import 'package:app/service/user_service.dart';
 import 'package:app/utils/colors.dart';
 import 'package:flutter/material.dart';
+import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 
 import '../model/user.dart';
 
@@ -16,7 +17,6 @@ class FriendsScreen extends StatefulWidget {
 }
 
 class _FriendsScreen extends State<FriendsScreen> {
-
   List<Student> user = [];
 
   List<Student> sortUserbyPoint(List<Student> list) {
@@ -30,9 +30,11 @@ class _FriendsScreen extends State<FriendsScreen> {
 
   void getAllUser() async {
     final result = await UserService.getAllUser();
-    setState(() {
-      user = sortUserbyPoint(studentRole(result));
-    });
+    if (mounted) {
+      setState(() {
+        user = sortUserbyPoint(studentRole(result));
+      });
+    }
   }
 
   @override
@@ -45,110 +47,129 @@ class _FriendsScreen extends State<FriendsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF3A206C),
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage("lib/assets/gamification.jpeg"),
-            fit: BoxFit.cover,
-            opacity: 0.6,
+      body: Stack(
+        children: [
+          // 1. BACKGROUND FULL LAYAR
+          // Menggunakan Positioned.fill agar gambar tidak hanya berada di bagian atas
+          Positioned.fill(
+            child: Image.asset(
+              "lib/assets/gamification.jpeg",
+              fit: BoxFit.cover, 
+              alignment: Alignment.topCenter,
+              opacity: const AlwaysStoppedAnimation(0.5),
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
-                        width: 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Image.asset(
-                      'lib/assets/pictures/icon.png',
-                      width: 24,
-                      height: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Papan Peringkat',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            fontFamily: 'DIN_Next_Rounded',
-                          ),
-                        ),
-                        Text(
-                          'Kompetisi mingguan',
-                          style: TextStyle(
-                            color: Color(0xCCFFFFFF),
-                            fontSize: 13,
-                            fontFamily: 'DIN_Next_Rounded',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Leaderboard - mengisi sisa layar
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _buildAttractivePodiumItem(user, 1, 'lib/assets/leaderboards/banner-silver.png', const Color(0xFF6B7280)),
-                  _buildAttractivePodiumItem(user, 0, 'lib/assets/leaderboards/banner-gold.png', const Color(0xFFF59E0B)),
-                  _buildAttractivePodiumItem(user, 2, 'lib/assets/leaderboards/banner-bronze.png', const Color(0xFFEF4444)),
-                ],
-              ),
-            ),
-            
-            // List Peringkat - tetap ada
-            Expanded(
-              flex: 2,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(25),
-                    topRight: Radius.circular(25),
-                  ),
-                ),
+          
+          Column(
+            children: [
+              // Header - Diturunkan agar seimbang
+              SafeArea(
                 child: Column(
                   children: [
-                    const SizedBox(height: 20),
-                    _buildAttractiveSectionHeader(),
-                    const SizedBox(height: 15),
-                    Expanded(child: _buildAttractiveFriendsList()),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 50), 
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Image.asset(
+                              'lib/assets/pictures/icon.png',
+                              width: 24,
+                              height: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Papan Peringkat',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    fontFamily: 'DIN_Next_Rounded',
+                                  ),
+                                ),
+                                Text(
+                                  'Kompetisi mingguan',
+                                  style: TextStyle(
+                                    color: Color(0xCCFFFFFF),
+                                    fontSize: 13,
+                                    fontFamily: 'DIN_Next_Rounded',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
+              
+              const SizedBox(height: 10),
+
+              // Leaderboard Podium
+              Expanded(
+                flex: 2,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _buildAttractivePodiumItem(user, 1, 'lib/assets/leaderboards/banner-silver.png', const Color(0xFF6B7280)),
+                    _buildAttractivePodiumItem(user, 0, 'lib/assets/leaderboards/banner-gold.png', const Color(0xFFF59E0B)),
+                    _buildAttractivePodiumItem(user, 2, 'lib/assets/leaderboards/banner-bronze.png', const Color(0xFFEF4444)),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 10),
+
+              // 2. LIST PERINGKAT PANEL BAWAH
+              // Dibuat transparan (Opacity 0.9) agar gambar sirkuit background tembus ke bawah
+              Expanded(
+                flex: 3,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9), 
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(30),
+                      topRight: Radius.circular(30),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      _buildAttractiveSectionHeader(),
+                      const SizedBox(height: 15),
+                      Expanded(child: _buildAttractiveFriendsList()),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -164,7 +185,6 @@ class _FriendsScreen extends State<FriendsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (index == 2) const SizedBox(height: 35),
-          // Avatar dengan design menarik
           Container(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -189,7 +209,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          // Name dengan background menarik
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             decoration: BoxDecoration(
@@ -217,7 +236,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             ),
           ),
           const SizedBox(height: 2),
-          // Points dengan gradient menarik
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             decoration: BoxDecoration(
@@ -255,7 +273,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             ),
           ),
           const SizedBox(height: 3),
-          // Banner dengan asset yang tetap ada
           Container(
             width: 55,
             height: height.toDouble(),
@@ -278,7 +295,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             ),
           ),
           const SizedBox(height: 2),
-          // Rank Badge yang elegan
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
@@ -426,7 +442,6 @@ class _FriendsScreen extends State<FriendsScreen> {
   }
 
   Widget _buildAttractiveFriendsList() {
-    user = sortUserbyPoint(user);
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       itemCount: user.length,
@@ -440,7 +455,6 @@ class _FriendsScreen extends State<FriendsScreen> {
     final isTopThree = index < 3;
     final isFirst = index == 0;
     
-    // Warna dasar untuk setiap peringkat
     final rankColors = [
       const Color(0xFFFFD700), // Emas
       const Color(0xFFC0C0C0), // Perak
@@ -449,11 +463,10 @@ class _FriendsScreen extends State<FriendsScreen> {
     
     final rankColor = isTopThree ? rankColors[index] : const Color(0xFF6B7280);
     
-    // Background gradient card yang berbeda untuk Top 3
     final List<Color> cardGradient = switch (index) {
-        0 => [const Color(0xFFFFFBEB), Colors.white], // Gold tint
-        1 => [const Color(0xFFF9FAFB), Colors.white], // Silver tint
-        2 => [const Color(0xFFFEF2F2), Colors.white], // Bronze tint
+        0 => [const Color(0xFFFFFBEB), Colors.white], 
+        1 => [const Color(0xFFF9FAFB), Colors.white], 
+        2 => [const Color(0xFFFEF2F2), Colors.white],
         _ => [Colors.white, Colors.white],
     };
 
@@ -472,7 +485,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
-          // Glow effect untuk Juara 1
           if (isFirst)
             BoxShadow(
               color: const Color(0xFFFFD700).withOpacity(0.2),
@@ -492,7 +504,6 @@ class _FriendsScreen extends State<FriendsScreen> {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            // Rank Badge Kreatif dengan Icon
             Container(
               width: 50,
               height: 50,
@@ -517,9 +528,9 @@ class _FriendsScreen extends State<FriendsScreen> {
                 child: isTopThree
                   ? Icon(
                       switch (index) {
-                        0 => Icons.emoji_events_rounded, // Piala
-                        1 => Icons.military_tech_rounded, // Medali
-                        2 => Icons.workspace_premium_rounded, // Badge
+                        0 => Icons.emoji_events_rounded,
+                        1 => Icons.military_tech_rounded,
+                        2 => Icons.workspace_premium_rounded,
                         _ => Icons.star,
                       },
                       color: Colors.white,
@@ -537,7 +548,6 @@ class _FriendsScreen extends State<FriendsScreen> {
               ),
             ),
             const SizedBox(width: 14),
-            // User Info dengan avatar
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -550,7 +560,7 @@ class _FriendsScreen extends State<FriendsScreen> {
                         backgroundImage: student.image != null && student.image!.isNotEmpty
                             ? NetworkImage(student.image!)
                             : null,
-                        child: student.image == null || student!.image!.isEmpty
+                        child: student.image == null || student.image!.isEmpty
                             ? Icon(Icons.person, size: 16, color: Colors.grey[400])
                             : null,
                       ),
@@ -582,9 +592,7 @@ class _FriendsScreen extends State<FriendsScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // Animasi yang berbeda untuk top 3 dan lainnya
                   if (isTopThree)
-                    // Animasi khusus untuk juara 1-3
                     Row(
                       children: [
                         for (int i = 0; i < 5; i++)
@@ -636,7 +644,6 @@ class _FriendsScreen extends State<FriendsScreen> {
                       ],
                     )
                   else
-                    // Animasi sederhana untuk peringkat lainnya
                     Row(
                       children: [
                         for (int i = 0; i < 2; i++)
@@ -677,7 +684,6 @@ class _FriendsScreen extends State<FriendsScreen> {
                 ],
               ),
             ),
-            // Points Badge yang menarik
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
@@ -722,525 +728,6 @@ class _FriendsScreen extends State<FriendsScreen> {
           ],
         ),
       ),
-    );
-  }
-  Widget _buildFriendsList() {
-    user = sortUserbyPoint(user);
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: user.length,
-      itemBuilder: (context, index) {
-        return _buildMobileFriendCard(user[index], index);
-      },
-    );
-  }
-
-  Widget _buildMobileFriendCard(Student student, int index) {
-    final isTopThree = index < 3;
-    final colors = [
-      const Color(0xFFFFD700), // Gold
-      const Color(0xFFC0C0C0), // Silver
-      const Color(0xFFCD7F32), // Bronze
-    ];
-    final rankColor = isTopThree ? colors[index] : const Color(0xFF6B7280);
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: isTopThree ? Border.all(
-          color: rankColor.withOpacity(0.3),
-          width: 1.5,
-        ) : null,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            // Rank Badge
-            Container(
-              width: 50,
-              height: 45,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: isTopThree 
-                    ? [rankColor, rankColor.withOpacity(0.7)]
-                    : [const Color(0xFF441F7F), const Color(0xFF6B46C1)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: rankColor.withOpacity(0.25),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: isTopThree
-                  ? Image.asset(
-                      switch (index) {
-                        0 => 'lib/assets/1st.png',
-                        1 => 'lib/assets/2nd.png',
-                        2 => 'lib/assets/3rd.png',
-                        _ => ''
-                      },
-                      width: 22,
-                      height: 22,
-                    )
-                  : Text(
-                      '${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'DIN_Next_Rounded',
-                      ),
-                    ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // User Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: const Color(0xFFF3EDF7),
-                        backgroundImage: student.image != null && student.image!.isNotEmpty
-                            ? NetworkImage(student.image!)
-                            : null,
-                        child: student.image == null || student!.image!.isEmpty
-                            ? Icon(Icons.person, size: 16, color: Colors.grey[400])
-                            : null,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          student.name,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1F2937),
-                            fontFamily: 'DIN_Next_Rounded',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  // Progress bar
-                  Container(
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3EDF7),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: (student.points! / 1000).clamp(0.0, 1.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: isTopThree
-                              ? [rankColor, rankColor.withOpacity(0.7)]
-                              : [const Color(0xFF441F7F), const Color(0xFF6B46C1)],
-                          ),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Points Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF441F7F),
-                    const Color(0xFF6B46C1),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF441F7F).withOpacity(0.25),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    color: Colors.white,
-                    size: 14,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${student.points}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'DIN_Next_Rounded',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModernFriendCard(Student student, int index) {
-    final isTopThree = index < 3;
-    final colors = [
-      const Color(0xFFFFD700), // Gold
-      const Color(0xFFC0C0C0), // Silver
-      const Color(0xFFCD7F32), // Bronze
-    ];
-    final rankColor = isTopThree ? colors[index] : const Color(0xFF6B7280);
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-        border: isTopThree ? Border.all(
-          color: rankColor.withOpacity(0.3),
-          width: 2,
-        ) : null,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // Rank Badge dengan design yang lebih menarik
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: isTopThree 
-                    ? [rankColor, rankColor.withOpacity(0.7)]
-                    : [const Color(0xFF441F7F), const Color(0xFF6B46C1)],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: rankColor.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: isTopThree
-                  ? Image.asset(
-                      switch (index) {
-                        0 => 'lib/assets/1st.png',
-                        1 => 'lib/assets/2nd.png',
-                        2 => 'lib/assets/3rd.png',
-                        _ => ''
-                      },
-                      width: 28,
-                      height: 28,
-                    )
-                  : Text(
-                      '${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'DIN_Next_Rounded',
-                      ),
-                    ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            // User Info dengan avatar
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: const Color(0xFFF3EDF7),
-                        backgroundImage: student.image != null && student.image!.isNotEmpty
-                            ? NetworkImage(student.image!)
-                            : null,
-                        child: student.image == null || student!.image!.isEmpty
-                            ? Icon(Icons.person, size: 20, color: Colors.grey[400])
-                            : null,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              student.name,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1F2937),
-                                fontFamily: 'DIN_Next_Rounded',
-                              ),
-                            ),
-                            Text(
-                              student.studentId ?? '',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF6B7280),
-                                fontFamily: 'DIN_Next_Rounded',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // Progress bar untuk visualisasi poin
-                  Container(
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3EDF7),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: FractionallySizedBox(
-                      alignment: Alignment.centerLeft,
-                      widthFactor: (student.points! / 1000).clamp(0.0, 1.0),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: isTopThree
-                              ? [rankColor, rankColor.withOpacity(0.7)]
-                              : [const Color(0xFF441F7F), const Color(0xFF6B46C1)],
-                          ),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Points Badge dengan design menarik
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF441F7F),
-                    const Color(0xFF6B46C1),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(25),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF441F7F).withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${student.points}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'DIN_Next_Rounded',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLeaderBoard(List<Student> list) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _buildPodiumItem(list, 1, 'lib/assets/leaderboards/banner-silver.png', const Color(0xFF6B7280)),
-        _buildPodiumItem(list, 0, 'lib/assets/leaderboards/banner-gold.png', const Color(0xFFF59E0B)),
-        _buildPodiumItem(list, 2, 'lib/assets/leaderboards/banner-bronze.png', const Color(0xFFEF4444)),
-      ],
-    );
-  }
-
-  Widget _buildPodiumItem(List<Student> list, int index, String bannerPath, Color color) {
-    final student = list.isNotEmpty && list.length > index ? list[index] : null;
-    final heights = [55, 45, 35];
-    final height = heights[index];
-    
-    return Column(
-      children: [
-        // Avatar dengan design yang lebih menarik
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 15,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: CircleAvatar(
-            radius: 25,
-            backgroundColor: Colors.white,
-            backgroundImage: student?.image != null && student!.image!.isNotEmpty
-                ? NetworkImage(student.image!)
-                : null,
-            child: student?.image == null || student!.image!.isEmpty
-                ? Icon(Icons.person, size: 22, color: Colors.grey[400])
-                : null,
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Name dengan background yang lebih menarik
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Text(
-            student?.name ?? '',
-            style: const TextStyle(
-              color: Color(0xFF1F2937),
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              fontFamily: 'DIN_Next_Rounded',
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(height: 6),
-        // Points dengan design yang lebih menarik
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [color, color.withOpacity(0.8)],
-            ),
-            borderRadius: BorderRadius.circular(10),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.star_rounded,
-                color: Colors.white,
-                size: 12,
-              ),
-              const SizedBox(width: 3),
-              Text(
-                '${student?.points ?? 0}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: 'DIN_Next_Rounded',
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        // Banner dengan shadow yang lebih baik
-        Container(
-          width: 60,
-          height: height.toDouble(),
-          decoration: BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage(bannerPath),
-              fit: BoxFit.fitWidth,
-            ),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(10),
-              topRight: Radius.circular(10),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.25),
-                blurRadius: 15,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
