@@ -15,7 +15,7 @@ import '../utils/colors.dart';
 class AssessmentScreen extends StatefulWidget {
   final ChapterStatus status;
   final Student user;
-  final String userType; 
+  final String userType;
   final Function(bool) updateMaterialLocked;
   final Function(ChapterStatus) updateStatus;
   final Function(bool) updateAssessmentStarted;
@@ -76,12 +76,11 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   void _startTimer() {
     _timer?.cancel();
     if (question != null && question!.questions.isNotEmpty) {
-      // RULES PROFILE: Time Pressure STRICTLY for Disruptors only
+      // Aturan waktu tetap berbeda untuk Disruptors (Game Element: Time Pressure)
       if (widget.userType == "Disruptors") {
         _secondsRemaining = (question!.questions[_currentPage].type == 'EY') ? 40 : 15;
       } else {
-        // Profil lain (Free Spirits, Achievers, Players) diberikan waktu sangat santai
-        _secondsRemaining = 999; 
+        _secondsRemaining = 999;
       }
     }
 
@@ -90,7 +89,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
         if (mounted) setState(() => _secondsRemaining--);
       } else {
         _timer?.cancel();
-        // Hanya Disruptors yang dipaksa pindah/submit saat waktu habis
         if (widget.userType == "Disruptors") {
           _handleTimeUp();
         }
@@ -136,10 +134,9 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Selesaikan Assessment?',
+        title: const Text('Kirim Jawaban?',
             style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold)),
-        content: const Text(
-            'Setelah dikirim, Anda tidak dapat mengubah jawaban atau mengulang kuis ini.'),
+        content: const Text('Anda tidak dapat mengubah jawaban setelah ini dikirim.'),
         actions: [
           TextButton(
               onPressed: () {
@@ -155,7 +152,7 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
               Navigator.pop(context);
               _executeSubmit();
             },
-            child: const Text('Kirim', style: TextStyle(color: Colors.white)),
+            child: const Text('Ya, Kirim', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -191,20 +188,7 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     if (finalScore > 100) finalScore = 100;
 
     try {
-      ActivityService.sendLog(
-        userId: user!.id, 
-        type: 'QUIZ_SCORE', 
-        value: finalScore.toDouble()
-      );
-
-      if (widget.userType == "Disruptors" && _secondsRemaining > 10 && finalScore == 100) {
-        ActivityService.sendLog(
-          userId: user!.id, 
-          type: 'ANOMALY_PATTERNS', 
-          value: 1.0,
-          metadata: {"reason": "fast_disruptor_completion"}
-        );
-      }
+      ActivityService.sendLog(userId: user!.id, type: 'QUIZ_SCORE', value: finalScore.toDouble());
 
       user!.points = (user!.points ?? 0) + finalScore;
       status.assessmentDone = true;
@@ -215,8 +199,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
         UserService.updateUserPoints(user!),
         UserChapterService.updateChapterStatus(status.id, status),
       ]);
-
-      await UserService.triggerChallengeManual(user!.id, 'FINISH_ASSESSMENT');
 
       if (mounted) {
         Navigator.pop(context);
@@ -233,12 +215,13 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
-      debugPrint(">>> GAGAL SINKRONISASI ASSESSMENT: $e <<<");
+      debugPrint(">>> ERROR SINKRONISASI: $e <<<");
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // KONDISI SELESAI: Menampilkan hasil untuk SEMUA profil
     if (widget.status.assessmentDone || _assessmentFinished) {
       return _buildQuizResult();
     }
@@ -248,8 +231,10 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
     }
 
     bool isDisruptor = widget.userType == "Disruptors";
+    int totalQuestions = question?.questions.length ?? 0;
 
-    return Container(
+    return Scaffold(
+      body: Container(
         decoration: const BoxDecoration(
             image: DecorationImage(
                 image: AssetImage('lib/assets/pictures/background-pattern.png'),
@@ -257,26 +242,29 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
               child: Column(
                 children: [
-                  LinearProgressIndicator(
-                      value: (_currentPage + 1) / (question?.questions.length ?? 1),
-                      backgroundColor: Colors.grey.shade300,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
-                  const SizedBox(height: 10),
-                  // UI TIMER: Only shown prominently for Disruptors
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: LinearProgressIndicator(
+                        minHeight: 10,
+                        value: (_currentPage + 1) / (totalQuestions > 0 ? totalQuestions : 1),
+                        backgroundColor: Colors.grey.shade300,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
+                  ),
+                  const SizedBox(height: 12),
                   if (isDisruptor)
                     Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                       Icon(LineAwesomeIcons.clock,
-                          color: (isDisruptor || _secondsRemaining < 10) ? Colors.red : Colors.black54,
-                          size: 28), 
+                          color: _secondsRemaining < 10 ? Colors.red : Colors.black54,
+                          size: 24),
                       const SizedBox(width: 8),
-                      Text("$_secondsRemaining DETIK!",
-                          style: const TextStyle(
-                              fontSize: 18,
+                      Text("$_secondsRemaining DETIK",
+                          style: TextStyle(
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: Colors.red)),
+                              color: _secondsRemaining < 10 ? Colors.red : Colors.black87)),
                     ]),
                 ],
               ),
@@ -285,90 +273,96 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
               child: PageView.builder(
                 controller: _pageController,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: question?.questions.length ?? 0,
+                itemCount: totalQuestions,
                 onPageChanged: (int page) {
                   if (mounted) setState(() => _currentPage = page);
                   _startTimer();
                 },
                 itemBuilder: (context, count) => Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     child: _buildSingleQuestion(count)),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(30, 10, 30, 50),
               child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 12)),
-                    onPressed: () => _currentPage < (question?.questions.length ?? 0) - 1
-                        ? _pageController.nextPage(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut)
-                        : _showFinishConfirmation(),
-                    icon: Icon(
-                        _currentPage < (question?.questions.length ?? 0) - 1
+                width: double.infinity,
+                height: 60,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryColor,
+                      elevation: 4,
+                      shadowColor: AppColors.primaryColor.withOpacity(0.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
+                  onPressed: () => _currentPage < totalQuestions - 1
+                      ? _pageController.nextPage(
+                          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut)
+                      : _showFinishConfirmation(),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _currentPage < totalQuestions - 1
+                            ? 'LANJUT KE SOAL ${_currentPage + 2}'
+                            : 'KIRIM JAWABAN SEKARANG',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'DIN_Next_Rounded'),
+                      ),
+                      const SizedBox(width: 10),
+                      Icon(
+                        _currentPage < totalQuestions - 1
                             ? LineAwesomeIcons.arrow_right_solid
-                            : LineAwesomeIcons.check_solid,
-                        color: Colors.white),
-                    label: Text(
-                        _currentPage < (question?.questions.length ?? 0) - 1
-                            ? 'Pertanyaan Berikutnya'
-                            : 'Kirim Jawaban',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  )),
+                            : LineAwesomeIcons.check_circle,
+                        color: Colors.white,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),
-      );
+      ),
+    );
   }
 
   Widget _buildAssessmentInitial() {
     bool isDisruptor = widget.userType == "Disruptors";
-
-    return Container(
-      decoration: const BoxDecoration(
-          image: DecorationImage(
-              image: AssetImage('lib/assets/pictures/background-pattern.png'),
-              fit: BoxFit.cover)),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Image.asset('lib/assets/pixels/assessment-pixel.png', height: 80),
-            const SizedBox(height: 16),
-            const Text('Mulai Assessment',
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'DIN_Next_Rounded')),
-            const SizedBox(height: 12),
-            Text(
-                isDisruptor
-                    ? "MODE TEKANAN: Waktu sangat terbatas!\nPilihan Ganda (15 detik) / Essay (40 detik)"
-                    : "Selesaikan pertanyaan berikut dengan teliti.\nChapter ini akan terbuka setelah assessment selesai.",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: isDisruptor ? Colors.red : Colors.black87,
-                    fontWeight: isDisruptor ? FontWeight.bold : FontWeight.normal)),
-            const SizedBox(height: 32),
-            SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryColor,
-                      padding: const EdgeInsets.symmetric(vertical: 12)),
-                  onPressed: () {
-                    setState(() => _assessmentStarted = true);
-                    _startTimer();
-                  },
-                  icon: const Icon(LineAwesomeIcons.rocket_solid, color: Colors.white),
-                  label: const Text('Mulai Sekarang', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                )),
-          ]),
-        ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Image.asset('lib/assets/pixels/assessment-pixel.png', height: 100),
+          const SizedBox(height: 24),
+          const Text('Siap Memulai?',
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
+          const SizedBox(height: 12),
+          Text(
+              isDisruptor
+                  ? "Waktu Anda sangat terbatas!"
+                  : "Uji pemahaman Anda untuk membuka chapter berikutnya.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: isDisruptor ? Colors.red : Colors.black87, fontWeight: isDisruptor ? FontWeight.bold : FontWeight.normal)),
+          const SizedBox(height: 40),
+          SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryColor,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
+              onPressed: () {
+                setState(() => _assessmentStarted = true);
+                _startTimer();
+              },
+              icon: const Icon(LineAwesomeIcons.rocket_solid, color: Colors.white),
+              label: const Text('MULAI SEKARANG', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ]),
       ),
     );
   }
@@ -379,45 +373,36 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-              color: Colors.white, borderRadius: BorderRadius.circular(12),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)]),
-          child: Text("${number + 1}. ${q.question}",
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
-        const SizedBox(height: 20),
-        if (q.type == 'EY')
-          Card(
               color: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: TextField(
-                    maxLines: 5,
-                    decoration: const InputDecoration(
-                        hintText: "Ketik jawaban Anda di sini...", border: InputBorder.none),
-                    onChanged: (val) {
-                      q.selectedAnswer = val;
-                    },
-                  )))
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))]),
+          child: Text("Soal ${number + 1}:\n${q.question}",
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, height: 1.5)),
+        ),
+        const SizedBox(height: 25),
+        if (q.type == 'EY')
+          TextField(
+            maxLines: 5,
+            decoration: InputDecoration(
+                hintText: "Ketik jawaban di sini...",
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
+            onChanged: (val) => q.selectedAnswer = val,
+          )
         else
-          Column(
-              children: q.option.map((answer) {
+          ...q.option.map((answer) {
+            bool isSelected = q.selectedAnswer == answer;
             return Container(
-              margin: const EdgeInsets.only(bottom: 10),
+              margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
-                  color: q.selectedAnswer == answer
-                      ? AppColors.primaryColor.withOpacity(0.1)
-                      : Colors.white,
-                  border: Border.all(
-                      color: q.selectedAnswer == answer
-                          ? AppColors.primaryColor
-                          : Colors.grey.shade300,
-                      width: 2),
+                  color: isSelected ? AppColors.primaryColor.withOpacity(0.05) : Colors.white,
+                  border: Border.all(color: isSelected ? AppColors.primaryColor : Colors.grey.shade300, width: 2),
                   borderRadius: BorderRadius.circular(15)),
               child: RadioListTile<String>(
-                title: Text(answer),
+                title: Text(answer, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
                 value: answer,
                 groupValue: q.selectedAnswer,
                 activeColor: AppColors.primaryColor,
@@ -426,97 +411,64 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
                 },
               ),
             );
-          }).toList())
+          }).toList()
       ]),
     );
   }
 
   Widget _buildQuizResult() {
-    bool isDisruptor = widget.userType == "Disruptors";
-
-    return Container(
-      decoration: const BoxDecoration(
-          image: DecorationImage(
-              image: AssetImage('lib/assets/pictures/background-pattern.png'),
-              fit: BoxFit.cover)),
-      child: SingleChildScrollView(
-          child: Column(children: [
-        const SizedBox(height: 40),
+    // HAPUS pengecekan isDisruptor di sini agar review muncul untuk semua profil
+    return SingleChildScrollView(
+      child: Column(children: [
+        const SizedBox(height: 60),
+        const Icon(LineAwesomeIcons.trophy_solid, size: 80, color: Colors.amber),
+        const SizedBox(height: 20),
+        const Text("Assessment Selesai!", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         Card(
-          margin: const EdgeInsets.all(16),
+          margin: const EdgeInsets.all(25),
           color: AppColors.primaryColor,
-          elevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Hasil Assessment',
-                  style: TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Divider(color: Colors.white30),
+            padding: const EdgeInsets.all(30),
+            child: Column(children: [
+              const Text("SKOR ANDA", style: TextStyle(color: Colors.white70, fontSize: 16)),
+              Text("${status.assessmentGrade}", style: const TextStyle(color: Colors.white, fontSize: 60, fontWeight: FontWeight.bold)),
+              const Divider(color: Colors.white24),
               const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Benar', style: TextStyle(color: Colors.white, fontSize: 16)),
-                  Text('$correctAnswer / ${question?.questions.length ?? 0}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Skor Akhir', style: TextStyle(color: Colors.white, fontSize: 16)),
-                  Text('${status.assessmentGrade} / 100',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 22)),
-                ],
-              ),
+              Text("Benar: $correctAnswer / ${question?.questions.length ?? 0}", style: const TextStyle(color: Colors.white, fontSize: 18)),
             ]),
           ),
         ),
-        // Whitelist: Review Jawaban for Free Spirits (and others), but NOT for Disruptors
-        if (!isDisruptor) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text("Review Jawaban:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-          ),
-          if (question != null)
-            ...List.generate(question!.questions.length, (i) => _buildReviewCard(i)),
-        ] else
-          const Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Text(
-              "Review jawaban dinonaktifkan untuk profil Anda sesuai aturan Block Activity.",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
-            ),
-          ),
+        const Padding(
+          padding: EdgeInsets.all(20),
+          child: Text("Review jawaban Anda di bawah ini:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        ),
+        if (question != null)
+          ...List.generate(question!.questions.length, (i) => _buildReviewCard(i)),
         const SizedBox(height: 40),
-      ])),
+      ]),
     );
   }
 
   Widget _buildReviewCard(int number) {
     final q = question!.questions[number];
-    final bool isCorrect = q.selectedAnswer.toString().trim().toLowerCase() ==
-        q.correctedAnswer.toString().trim().toLowerCase();
-
+    final bool isCorrect = q.selectedAnswer.toString().trim().toLowerCase() == q.correctedAnswer.toString().trim().toLowerCase();
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: isCorrect ? Colors.green : Colors.red, width: 2)),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isCorrect ? Colors.green : Colors.red, width: 2)),
       child: ListTile(
-        leading: Icon(isCorrect ? Icons.check_circle : Icons.cancel,
-            color: isCorrect ? Colors.green : Colors.red),
+        leading: Icon(isCorrect ? Icons.check_circle : Icons.cancel, color: isCorrect ? Colors.green : Colors.red),
         title: Text(q.question, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: Text("Jawaban Anda: ${q.selectedAnswer}\nJawaban Benar: ${q.correctedAnswer}"),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Jawaban Anda: ${q.selectedAnswer}", style: TextStyle(color: isCorrect ? Colors.green.shade700 : Colors.red.shade700)),
+              if (!isCorrect)
+                Text("Kunci Jawaban: ${q.correctedAnswer}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+            ],
+          ),
         ),
       ),
     );

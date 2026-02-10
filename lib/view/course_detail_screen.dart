@@ -23,7 +23,6 @@ import 'chapter_screen.dart';
 
 class CourseDetailScreen extends StatefulWidget {
   final int id;
-
   const CourseDetailScreen({super.key, required this.id});
 
   @override
@@ -40,90 +39,73 @@ class _CourseDetail extends State<CourseDetailScreen> {
   UserCourse? uc;
   Student? user;
   List<BadgeModel>? listBadge;
-
-  // Variabel pendukung Rules Profile
   String userType = "Disruptors";
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _initialLoad();
+  void initState() {
+    super.initState();
+    _initialLoad(); // Gunakan initState untuk load pertama kali
   }
 
+  // Fungsi sentral untuk memuat data (Refreshable)
   Future<void> _initialLoad() async {
+    if (mounted) setState(() => isLoading = true);
+    
     pref = await SharedPreferences.getInstance();
     idCourse = pref.getInt('lastestSelectedCourse') ?? 0;
     idUser = pref.getInt('userId') ?? 0;
 
     if (idUser != 0) {
-      await getUser(idUser);
+      // Load user dan profile adaptive
+      final fetchedUser = await UserService.getUserById(idUser);
+      if (fetchedUser != null) {
+        user = fetchedUser;
+        await fetchAdaptiveProfile(idUser);
+      }
+
       if (idCourse != 0) {
+        // Load detail kursus dan progress user (UserCourse)
         courseDetail = await CourseService.getCourse(idCourse);
         uc = await UserCourseService.getUserCourse(idUser, idCourse);
         await getListBadge(idCourse);
-        await getChapter(idCourse);
+        
+        // Ambil daftar chapter beserta statusnya (assessmentDone, dll)
+        final result = await CourseService.getChapterByCourse(idCourse);
+        listChapter = await getStatusChapter(result);
       }
     }
-  }
 
-  Future<void> updateStatus(index) async {
-    final result = await UserChapterService.updateChapterStatus(
-        listChapter[index].status!.id, listChapter[index].status!);
-    setState(() {
-      listChapter[index].status = result;
-    });
-  }
-
-  Future<void> getUser(int id) async {
-    final fetchedUser = await UserService.getUserById(id);
-    if (fetchedUser != null) {
-      if (mounted) setState(() => user = fetchedUser);
-      await fetchAdaptiveProfile(id);
-    }
+    if (mounted) setState(() => isLoading = false);
   }
 
   Future<void> fetchAdaptiveProfile(int id) async {
     final String url = "http://10.106.207.43:7000/api/user/adaptive/$id";
     try {
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            userType = data['currentCluster'] ?? "Disruptors";
-          });
-          if (idCourse != 0) getChapter(idCourse);
-        }
+        userType = data['currentCluster'] ?? "Disruptors";
       }
     } catch (e) {
       debugPrint("Gagal sinkron cluster: $e");
     }
   }
 
-  Future<void> getChapter(int id) async {
-    if (mounted) setState(() => isLoading = true);
+  Future<List<Chapter>> getStatusChapter(List<Chapter> list) async {
+    for (var chapter in list) {
+      chapter.status = await UserChapterService.getChapterStatus(idUser, chapter.id);
+    }
+    return list;
+  }
 
-    final result = await CourseService.getChapterByCourse(id);
-    final updatedList = await getStatusChapter(result);
-
+  Future<void> updateStatus(index) async {
+    final result = await UserChapterService.updateChapterStatus(
+        listChapter[index].status!.id, listChapter[index].status!);
     if (mounted) {
       setState(() {
-        listChapter = updatedList;
-        isLoading = false;
+        listChapter[index].status = result;
       });
     }
-  }
-
-  Future<void> getListBadge(int courseId) async {
-    listBadge = await BadgeService.getBadgeListCourseByCourseId(courseId);
-  }
-
-  Future<List<Chapter>> getStatusChapter(List<Chapter> list) async {
-    await Future.forEach(list, (Chapter chapter) async {
-      chapter.status =
-          await UserChapterService.getChapterStatus(idUser, chapter.id);
-    });
-    return list;
   }
 
   void updateUserCourse() async {
@@ -132,24 +114,22 @@ class _CourseDetail extends State<CourseDetailScreen> {
     }
   }
 
+  Future<void> getListBadge(int courseId) async {
+    listBadge = await BadgeService.getBadgeListCourseByCourseId(courseId);
+  }
+
   int idOfBadge(int isCheckpoint) {
     int idbadge = 0;
     if (listBadge == null) return 0;
     switch (isCheckpoint) {
       case 1:
-        for (BadgeModel i in listBadge!) {
-          if (i.type == 'BEGINNER') idbadge = i.id;
-        }
+        for (var i in listBadge!) { if (i.type == 'BEGINNER') idbadge = i.id; }
         break;
       case 2:
-        for (BadgeModel i in listBadge!) {
-          if (i.type == 'INTERMEDIATE') idbadge = i.id;
-        }
+        for (var i in listBadge!) { if (i.type == 'INTERMEDIATE') idbadge = i.id; }
         break;
       case 3:
-        for (BadgeModel i in listBadge!) {
-          if (i.type == 'ADVANCE') idbadge = i.id;
-        }
+        for (var i in listBadge!) { if (i.type == 'ADVANCE') idbadge = i.id; }
         break;
       default:
         idbadge = 0;
@@ -161,145 +141,120 @@ class _CourseDetail extends State<CourseDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          // Background Pattern Dasar
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage("lib/assets/learnbg.png"),
-                fit: BoxFit.cover,
-                opacity: 0.1,
+      body: RefreshIndicator(
+        onRefresh: _initialLoad, // Memungkinkan user swipe down untuk refresh
+        child: Stack(
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                image: DecorationImage(
+                  image: AssetImage("lib/assets/learnbg.png"),
+                  fit: BoxFit.cover,
+                  opacity: 0.1,
+                ),
               ),
             ),
-          ),
-          
-          CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              // HEADER YANG BISA DISCROLL (SliverAppBar)
-              SliverAppBar(
-                expandedHeight: 180.0,
-                floating: false,
-                pinned: true, // Menjaga bagian kecil tetap di atas saat scroll
-                elevation: 0,
-                backgroundColor: const Color(0xFF441F7F),
-                automaticallyImplyLeading: false,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.asset(
-                        "lib/assets/gamification.jpeg",
-                        fit: BoxFit.cover,
-                      ),
-                      Container(
-                        color: const Color(0xFF441F7F).withOpacity(0.6),
-                      ),
-                      SafeArea(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(height: 20),
-                            const Text(
-                              'COURSE PROGRESS',
-                              style: TextStyle(
-                                  fontFamily: 'DIN_Next_Rounded',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 22,
-                                  color: Colors.white,
-                                  letterSpacing: 1.2),
-                            ),
-                            const SizedBox(height: 5),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 30),
-                              child: Text(
-                                courseDetail?.courseName ?? "Loading...",
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontFamily: 'DIN_Next_Rounded',
-                                  fontSize: 14,
-                                  color: Colors.white70,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+            CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: 180.0,
+                  pinned: true,
+                  elevation: 0,
+                  backgroundColor: const Color(0xFF441F7F),
+                  automaticallyImplyLeading: false,
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.asset("lib/assets/gamification.jpeg", fit: BoxFit.cover),
+                        Container(color: const Color(0xFF441F7F).withOpacity(0.6)),
+                        SafeArea(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SizedBox(height: 20),
+                              const Text('COURSE PROGRESS',
+                                  style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold, fontSize: 22, color: Colors.white, letterSpacing: 1.2)),
+                              const SizedBox(height: 5),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 30),
+                                child: Text(courseDetail?.courseName ?? "Loading...",
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 14, color: Colors.white70),
+                                    maxLines: 1, overflow: TextOverflow.ellipsis),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
+                      ],
+                    ),
+                  ),
+                  title: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
                       ),
+                      Image.asset("lib/assets/LeveLearn.png", width: 100),
+                      const SizedBox(width: 40),
                     ],
                   ),
                 ),
-                // Tombol Back & Logo di bar paling atas saat pinned
-                title: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      icon: const Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    Image.asset("lib/assets/LeveLearn.png", width: 100),
-                    const SizedBox(width: 40),
-                  ],
-                ),
-              ),
-
-              // DAFTAR CHAPTER (SliverList)
-              isLoading
-                  ? const SliverFillRemaining(
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(20, 30, 20, 40),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, count) {
-                            return TweenAnimationBuilder<double>(
-                              duration: Duration(milliseconds: 500 + (count * 100)),
-                              tween: Tween<double>(begin: 0.0, end: 1.0),
-                              curve: Curves.easeOut,
-                              builder: (context, value, child) {
-                                return Opacity(
-                                  opacity: value,
-                                  child: Transform.translate(
-                                    offset: Offset(0, 30 * (1 - value)),
-                                    child: child,
-                                  ),
-                                );
-                              },
-                              child: Stack(
-                                alignment: Alignment.topCenter,
-                                clipBehavior: Clip.none,
-                                children: [
-                                  if (count < listChapter.length - 1)
-                                    Positioned(
-                                      left: 0, right: 0, bottom: -50, top: 80,
-                                      child: Center(
-                                        child: Container(
-                                          width: 4,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFD1C4E9),
-                                            borderRadius: BorderRadius.circular(2),
+                isLoading
+                    ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
+                    : SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 30, 20, 40),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, count) {
+                              return TweenAnimationBuilder<double>(
+                                duration: Duration(milliseconds: 500 + (count * 100)),
+                                tween: Tween<double>(begin: 0.0, end: 1.0),
+                                curve: Curves.easeOut,
+                                builder: (context, value, child) {
+                                  return Opacity(
+                                    opacity: value,
+                                    child: Transform.translate(
+                                      offset: Offset(0, 30 * (1 - value)),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: Stack(
+                                  alignment: Alignment.topCenter,
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    if (count < listChapter.length - 1)
+                                      Positioned(
+                                        left: 0, right: 0, bottom: -50, top: 80,
+                                        child: Center(
+                                          child: Container(
+                                            width: 4,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFD1C4E9),
+                                              borderRadius: BorderRadius.circular(2),
+                                            ),
                                           ),
                                         ),
                                       ),
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 24.0),
+                                      child: _decideChapterItem(count),
                                     ),
-                                  Padding(
-                                    padding: const EdgeInsets.only(bottom: 24.0),
-                                    child: _decideChapterItem(count),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                          childCount: listChapter.length,
+                                  ],
+                                ),
+                              );
+                            },
+                            childCount: listChapter.length,
+                          ),
                         ),
                       ),
-                    ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -350,13 +305,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
             margin: const EdgeInsets.only(top: 30),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF4A148C).withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
+              boxShadow: [BoxShadow(color: const Color(0xFF4A148C).withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))],
             ),
             child: Material(
               color: Colors.transparent,
@@ -364,6 +313,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(24),
                 onTap: () async {
+                  // Logic Update Lokal sebelum pindah
                   if (uc != null) {
                     uc!.currentChapter = uc!.currentChapter < chapter.level ? chapter.level : uc!.currentChapter;
                     updateUserCourse();
@@ -372,9 +322,10 @@ class _CourseDetail extends State<CourseDetailScreen> {
                     chapter.status!.timeStarted = DateTime.now();
                     chapter.status!.isStarted = true;
                   }
-                  updateStatus(index);
+                  await updateStatus(index);
 
-                  final result = await Navigator.push(
+                  // BAGIAN KRUSIAL: Menunggu user kembali dari ChapterScreen
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => Chapterscreen(
@@ -390,21 +341,14 @@ class _CourseDetail extends State<CourseDetailScreen> {
                     ),
                   );
 
-                  if (result != null) {
-                    setState(() {
-                      listChapter[result['index']].status = ChapterStatus.fromJson(result['status']);
-                    });
-                  }
+                  // SETELAH KEMBALI: Panggil initialLoad untuk refresh semua status dari database
+                  _initialLoad();
                 },
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Color(0xFF5E2B99), Color(0xFF441F7F)],
-                      ),
+                      gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF5E2B99), Color(0xFF441F7F)]),
                       border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5)),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 50, 20, 24),
@@ -421,11 +365,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        Text(
-                          displayTitle,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white, fontFamily: 'DIN_Next_Rounded'),
-                        ),
+                        Text(displayTitle, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white, fontFamily: 'DIN_Next_Rounded')),
                       ],
                     ),
                   ),
@@ -439,21 +379,13 @@ class _CourseDetail extends State<CourseDetailScreen> {
               width: 60, height: 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: isCurrent ? [const Color(0xFF00E676), const Color(0xFF00C853)] : [Colors.grey.shade400, Colors.grey.shade600],
-                ),
+                gradient: LinearGradient(colors: isCurrent ? [const Color(0xFF00E676), const Color(0xFF00C853)] : [Colors.grey.shade400, Colors.grey.shade600]),
                 border: Border.all(color: Colors.white, width: 3),
               ),
-              child: Center(
-                child: Text("${chapter.level}", style: const TextStyle(fontFamily: 'Modak', fontSize: 24, color: Colors.white)),
-              ),
+              child: Center(child: Text("${chapter.level}", style: const TextStyle(fontFamily: 'Modak', fontSize: 24, color: Colors.white))),
             ),
           ),
-          if (isCurrent)
-            Positioned(
-              right: 0, bottom: 10,
-              child: Image.asset('lib/assets/rocket.png', width: 60, height: 60),
-            ),
+          if (isCurrent) Positioned(right: 0, bottom: 10, child: Image.asset('lib/assets/rocket.png', width: 60, height: 60)),
         ],
       ),
     );
@@ -468,25 +400,14 @@ class _CourseDetail extends State<CourseDetailScreen> {
         children: [
           Container(
             width: double.infinity,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              color: const Color(0xFFF3F4F6),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), color: const Color(0xFFF3F4F6), border: Border.all(color: Colors.grey.shade300)),
             child: Padding(
               padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 20),
               child: Column(
                 children: [
                   Icon(Icons.lock_rounded, size: 40, color: Colors.grey.shade300),
                   const SizedBox(height: 12),
-                  Text(message, 
-                    textAlign: TextAlign.center, 
-                    style: TextStyle(
-                      fontSize: 14, 
-                      color: userType == "Disruptors" && message.contains("LEVEL TERKUNCI") ? Colors.red : Colors.grey, 
-                      fontWeight: FontWeight.bold
-                    )
-                  ),
+                  Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: userType == "Disruptors" && message.contains("TERKUNCI") ? Colors.red : Colors.grey, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -502,9 +423,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
       width: 80, height: 80,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: unlocked ? [const Color(0xFF4ADE80), const Color(0xFF16A34A)] : [Colors.grey.shade400, Colors.grey.shade600],
-        ),
+        gradient: LinearGradient(colors: unlocked ? [const Color(0xFF4ADE80), const Color(0xFF16A34A)] : [Colors.grey.shade400, Colors.grey.shade600]),
         border: Border.all(color: Colors.white, width: 3),
       ),
       child: Center(child: Text('$level', style: const TextStyle(fontSize: 32, color: Colors.white, fontFamily: 'Modak'))),
@@ -514,10 +433,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
   Widget _buildStatusIcon(bool isDone, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: isDone ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.1),
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: isDone ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.1), shape: BoxShape.circle),
       child: Icon(icon, size: 18, color: isDone ? const Color(0xFFFFD700) : Colors.white24),
     );
   }

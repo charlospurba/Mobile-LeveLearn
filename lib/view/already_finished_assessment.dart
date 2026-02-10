@@ -1,6 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
+import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import '../model/assessment.dart';
 import '../model/chapter_status.dart';
 import '../model/user.dart';
@@ -10,6 +9,7 @@ import '../utils/colors.dart';
 class AlreadyFinishedAssessmentAssessmentScreen extends StatefulWidget {
   final ChapterStatus status;
   final Student user;
+
   const AlreadyFinishedAssessmentAssessmentScreen({
     super.key,
     required this.status,
@@ -23,252 +23,242 @@ class AlreadyFinishedAssessmentAssessmentScreen extends StatefulWidget {
 
 class _AlreadyFinishedAssessmentAssessmentScreenState
     extends State<AlreadyFinishedAssessmentAssessmentScreen> {
-  bool tapped = false;
-  int correctAnswer = 0;
-  int point = 0;
   Assessment? question;
-  bool isCalculating = true;
+  bool isLoading = true;
+  int correctAnswerCount = 0;
 
   @override
   void initState() {
     super.initState();
-    getAssessment(widget.status.chapterId);
+    _loadAndPrepareData();
   }
 
-  void getAssessment(int id) async {
+  Future<void> _loadAndPrepareData() async {
     try {
-      final resultAssessment = await ChapterService.getAssessmentByChapterId(id);
-      if (mounted) {
+      final result = await ChapterService.getAssessmentByChapterId(widget.status.chapterId);
+      if (mounted && result != null) {
+        int tempCorrect = 0;
+        for (int i = 0; i < result.questions.length; i++) {
+          if (i < widget.status.assessmentAnswer.length) {
+            String userAns = widget.status.assessmentAnswer[i];
+            result.questions[i].selectedAnswer = userAns;
+            if (userAns.trim().toLowerCase() == result.questions[i].correctedAnswer.trim().toLowerCase()) {
+              result.questions[i].isCorrect = true;
+              tempCorrect++;
+            } else {
+              result.questions[i].isCorrect = false;
+            }
+          }
+        }
         setState(() {
-          question = resultAssessment;
+          question = result;
+          correctAnswerCount = tempCorrect;
+          isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching assessment: $e");
-      if (mounted) setState(() => isCalculating = false);
+      if (mounted) setState(() => isLoading = false);
     }
-  }
-
-  Future<double> checkEssay(String reference, String answer) async {
-    try {
-      // Menambahkan timeout agar tidak nunggu terlalu lama jika server lambat
-      double similarity = await ChapterService.checkSimiliarity(reference, answer)
-          .timeout(const Duration(seconds: 5));
-      return similarity;
-    } catch (e) {
-      debugPrint("Essay check error: $e");
-      return 0.0;
-    }
-  }
-
-  Future<bool> _calculateResults() async {
-    if (question == null || widget.status.assessmentAnswer == null) return false;
-
-    tapped = true;
-    int tempCorrect = 0;
-    double rangeScore = 100 / (question!.questions.length > 0 ? question!.questions.length : 1);
-
-    // Loop untuk memetakan jawaban lama ke model pertanyaan
-    for (int i = 0; i < widget.status.assessmentAnswer.length; i++) {
-      if (i >= question!.questions.length) break;
-
-      var q = question!.questions[i];
-      q.selectedAnswer = widget.status.assessmentAnswer[i];
-
-      if (q.type != 'EY') {
-        // Pilihan Ganda / True False
-        bool isNowCorrect = q.selectedAnswer.trim().toLowerCase() ==
-            q.correctedAnswer.trim().toLowerCase();
-
-        q.isCorrect = isNowCorrect;
-        if (isNowCorrect) {
-          q.score = rangeScore.ceil();
-          tempCorrect++;
-        }
-      } else {
-        // Essay - Membutuhkan pengecekan similarity ulang untuk review
-        double similarity = await checkEssay(q.correctedAnswer, q.selectedAnswer);
-        
-        q.isCorrect = similarity > 0.5;
-        if (q.isCorrect) {
-          q.score = (rangeScore * similarity).ceil();
-          tempCorrect++;
-        }
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        correctAnswer = tempCorrect;
-        point = widget.status.assessmentGrade; // Ambil dari status yang sudah tersimpan
-        isCalculating = false;
-      });
-    }
-    return true;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (question == null) {
-      return _loadingState("Memuat Pertanyaan...");
-    }
+    if (isLoading) return const Center(child: CircularProgressIndicator());
 
-    return FutureBuilder<bool>(
-      future: _calculateResults(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _loadingState("Menghitung Hasil...");
-        } else if (snapshot.hasError || snapshot.data == false) {
-          return _emptyState("Gagal memproses data assessment.");
-        } else {
-          return _buildMainContent();
-        }
-      },
-    );
-  }
-
-  Widget _buildMainContent() {
-    return Container(
-      decoration: const BoxDecoration(
-        image: DecorationImage(
-          image: AssetImage('lib/assets/pictures/background-pattern.png'),
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Column(
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FE),
+      body: Stack(
         children: [
-          _buildHeaderCard(),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: question!.questions.length,
-              itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: _buildQuestionReview(index),
-              ),
+          // 1. Background Pattern Dasar
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.04,
+              child: Image.asset('lib/assets/pictures/background-pattern.png', fit: BoxFit.cover),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderCard() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Card(
-        elevation: 4,
-        color: AppColors.primaryColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          
+          // 2. Konten Utama (Header & List Soal)
+          Column(
             children: [
-              const Text(
-                'Review Assessment',
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    fontFamily: 'DIN_Next_Rounded'),
-              ),
-              const Divider(color: Colors.white54),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _headerStat("Benar", "$correctAnswer / ${question!.questions.length}"),
-                  _headerStat("Skor Akhir", "$point / 100"),
-                ],
+              _buildStickyHeader(),
+              Expanded(
+                child: ListView.builder(
+                  // Padding bawah 140 agar soal terakhir tidak tertutup panel tombol
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 140), 
+                  itemCount: question?.questions.length ?? 0,
+                  itemBuilder: (context, index) => _buildHistoryCard(index),
+                ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
 
-  Widget _headerStat(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-        Text(value,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  Widget _buildQuestionReview(int index) {
-    final q = question!.questions[index];
-    return Card(
-      elevation: 2,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-            color: q.isCorrect ? Colors.green.shade400 : Colors.red.shade400,
-            width: 1.5),
-      ),
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: q.isCorrect ? Colors.green : Colors.red,
-          child: Text('${index + 1}', style: const TextStyle(color: Colors.white)),
-        ),
-        title: Text(
-          q.question,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-        ),
-        subtitle: Text("Skor: ${q.score}", 
-          style: TextStyle(color: q.isCorrect ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Divider(),
-                _reviewRow("Jawaban Anda:", q.selectedAnswer, q.isCorrect ? Colors.black : Colors.red),
-                const SizedBox(height: 4),
-                _reviewRow("Kunci Jawaban:", q.correctedAnswer, Colors.green),
-              ],
+          // 3. EFEK GRADIENT FADE (Batas halus agar soal "menghilang" saat di-scroll ke bawah)
+          Positioned(
+            bottom: 110, // Posisi tepat di atas panel putih
+            left: 0,
+            right: 0,
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFFF8F9FE).withOpacity(0.0),
+                    const Color(0xFFF8F9FE).withOpacity(1.0),
+                  ],
+                ),
+              ),
             ),
-          )
+          ),
+
+          // 4. PANEL TOMBOL BAWAH (Floating Panel dengan Border)
+          _buildFloatingBottomPanel(),
         ],
       ),
     );
   }
 
-  Widget _reviewRow(String label, String value, Color textColor) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        Text(value.isEmpty ? "(Kosong)" : value,
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.bold, color: textColor)),
-      ],
-    );
-  }
-
-  Widget _loadingState(String msg) {
-    return Center(
+  Widget _buildStickyHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 50, 20, 25),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 2))],
+      ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          Text(msg, style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
+          const Text("HASIL ASSESSMENT", 
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black38, letterSpacing: 1.5, fontSize: 11)),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text("${widget.status.assessmentGrade}", 
+                style: TextStyle(fontSize: 50, fontWeight: FontWeight.w900, color: AppColors.primaryColor, fontFamily: 'Modak')),
+              const Text(" / 100", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black26)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(20)),
+            child: Text("Benar $correctAnswerCount dari ${question?.questions.length} Soal",
+                style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 13)),
+          ),
         ],
       ),
     );
   }
 
-  Widget _emptyState(String msg) {
-    return Center(
-      child: Text(msg, style: const TextStyle(color: Colors.grey)),
+  Widget _buildHistoryCard(int index) {
+    final q = question!.questions[index];
+    final bool isCorrect = q.isCorrect ?? false;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isCorrect ? Colors.green.shade100 : Colors.red.shade100, width: 1.5),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isCorrect ? Colors.green.shade50 : Colors.red.shade50,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isCorrect ? LineAwesomeIcons.check_circle : LineAwesomeIcons.times_circle,
+              color: isCorrect ? Colors.green : Colors.red, size: 24,
+            ),
+          ),
+          title: Text("Soal ${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          subtitle: Text(q.question, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Divider(height: 20),
+                  Text(q.question, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, height: 1.4)),
+                  const SizedBox(height: 15),
+                  _buildAnswerBox("Jawaban Anda", q.selectedAnswer, isCorrect ? Colors.green : Colors.red),
+                  if (!isCorrect) ...[
+                    const SizedBox(height: 10),
+                    _buildAnswerBox("Jawaban Benar", q.correctedAnswer, Colors.green),
+                  ],
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnswerBox(String label, String value, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color, letterSpacing: 0.5)),
+          const SizedBox(height: 4),
+          Text(value.isEmpty ? "-" : value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingBottomPanel() {
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(25, 15, 25, 40),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          border: Border(top: BorderSide(color: Colors.grey.shade200, width: 1)), // Garis pemisah tegas
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, -5))
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(10))),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: AppColors.primaryColor, width: 2),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  backgroundColor: AppColors.primaryColor.withOpacity(0.02),
+                ),
+                onPressed: () => Navigator.pop(context),
+                icon: Icon(LineAwesomeIcons.arrow_left_solid, color: AppColors.primaryColor, size: 18),
+                label: Text("KEMBALI KE MATERI", 
+                  style: TextStyle(color: AppColors.primaryColor, fontWeight: FontWeight.w800, letterSpacing: 1.1)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

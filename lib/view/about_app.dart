@@ -13,114 +13,293 @@ class AboutAppScreen extends StatefulWidget {
 }
 
 class _AboutAppScreenState extends State<AboutAppScreen> {
-
+  // Fungsi untuk membuka link eksternal (GitHub)
   void _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Tidak dapat membuka URL: $url')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tidak dapat membuka URL: $url')),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          title: Text("About App"),
-          backgroundColor: AppColors.primaryColor,
-          leading: IconButton(
-              onPressed: (){
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => Mainscreen(navIndex : 4)),
-                );
-              },
-              icon: Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white,)),
-          titleTextStyle: TextStyle(
-              fontFamily: 'DIN_Next_Rounded',
-              fontSize: 24,
-              color: Colors.white
-          ),
-          iconTheme: IconThemeData(
-            color: Colors.white,
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('lib/assets/pictures/background-pattern.png'),
+            fit: BoxFit.cover,
+            opacity: 0.05,
           ),
         ),
-        body: Container(
-            decoration: BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage(
-                    'lib/assets/pictures/background-pattern.png'
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // --- HEADER: SLIVER APP BAR ---
+            SliverAppBar(
+              expandedHeight: 240.0,
+              floating: false,
+              pinned: true,
+              elevation: 0,
+              backgroundColor: AppColors.primaryColor,
+              leading: IconButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const Mainscreen(navIndex: 4)),
+                  );
+                },
+                icon: const Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white),
+              ),
+              flexibleSpace: FlexibleSpaceBar(
+                title: const Text(
+                  "About LeveLearn",
+                  style: TextStyle(
+                    fontFamily: 'DIN_Next_Rounded',
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    fontSize: 18,
+                  ),
                 ),
-                fit: BoxFit.cover,
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      'lib/assets/pictures/about-header.png',
+                      fit: BoxFit.cover,
+                    ),
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Colors.black87],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            child: SingleChildScrollView(
-                child: Padding(
-                  padding: EdgeInsets.all(0),
-                    child: Column(
-                        children: [
-                          Image.asset('lib/assets/pictures/about-header.png'),// Image 1
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text("Levelearn adalah aplikasi pembelajaran berbasis mobile dengan menggunakan pendekatan gamification guna menciptakan pengalaman pengguna aplikasi yang baik dalam belajar. Levelearn ditujukan sebagai media untuk pelajar dapat belajar materi secara mandiri diluar perkuliahan. Levelearn menyajikan gaya belajar yang interaktif dengan mengadopsi elemen-elemen dari game untuk diterapkan pada aplikasi. Levelearn juga diharapkan dapat meningkatkan kenyamanan belajar melalui kenyamanan dalam menggunakan aplikasi.",
-                              style: TextStyle(fontSize: 14,
-                              fontFamily: 'DIN_Next_Rounded',)
-                            ),
-                          ), // Text 1
-                          Image.asset('lib/assets/pictures/about-logo.png'), // Image 2
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text("Levelearn dikembangkan dengan latar belakang keperluan Tugas Akhir TA-2024/2025-13 Institut Teknologi Del yang berjudul 'Pendekatan Gamifikasi berbasis Preferensi Pengguna untuk Optimalisasi Pengalaman Pengguna pada E-Learning'. Adapaun studi kasus dari penelitian ini adalah Mata Kuliah Interaksi Manusia Komputer, yang melibatkan langsung mahasiswa mata kuliah Interaksi Manusia Komputer sebagai pengguna akhir aplikasi. Pengguna akhir aplikasi ini terlibat dalam pengembangan aplikasi, terkhusus dalam pemilihan elemen gamification untuk diterapkan pada aplikasi, dan evaluasi optimalisasi pengalaman pengguna pada aplikasi.",
-                                style: TextStyle(fontSize: 14,
-                                  fontFamily: 'DIN_Next_Rounded',)
-                            ),
-                          ), // Text 2
-                          GridView(
-                            shrinkWrap: true, // Prevent unnecessary scrolling inside another scrollable view
-                            physics: NeverScrollableScrollPhysics(), // Disable internal scrolling
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3, // 3 columns
-                              crossAxisSpacing: 10, // Space between columns
-                              mainAxisSpacing: 10, // Space between rows
-                              childAspectRatio: 1, // Ensures square items
-                            ),
-                            children: [
-                              Image.asset('lib/assets/pictures/flutter.png', fit: BoxFit.cover),
-                              Image.asset('lib/assets/pictures/node.png', fit: BoxFit.cover),
-                              Image.asset('lib/assets/pictures/react.png', fit: BoxFit.cover),
-                              Image.asset('lib/assets/pictures/mysql.png', fit: BoxFit.cover),
-                              Image.asset('lib/assets/pictures/supabase.png', fit: BoxFit.cover),
-                              Image.asset('lib/assets/pictures/docker.png', fit: BoxFit.cover),
-                            ],
-                          ), // Image 3
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text("Levelearn dibangun dengan mengkombinasikan beberapa jenis teknologi pengembangan aplikasi. Untuk pengembangan aplikasi mobile Levelearn menggunakan Flutter Dart, dan untuk pengembangan aplikasi web Levelearn menggunakan React. Untuk pengembangan backend aplikasi menggunakan Express (Node), dengan database berupa MySQL, dan storage menggunakan Supabase. Dan untuk deployment dan operation dari aplikasi menggunakan Docker.",
-                                style: TextStyle(fontSize: 14,
-                                  fontFamily: 'DIN_Next_Rounded',)
-                            ),
-                          ), // Text 3
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                  onPressed: () {
-                                    _launchURL('https://github.com/Levelearn');
-                                  },
-                                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
-                                  icon: Icon(LineAwesomeIcons.github, color: Colors.white,),
-                                  label: Text("Explore More", style: TextStyle(fontSize: 14, fontFamily: 'DIN_Next_Rounded', color: Colors.white))
-                              ),
-                            ),
-                          ) // Link ke Github Levelearn
-                        ]
-                    )
+
+            // --- CONTENT: LIST INFO ---
+            SliverList(
+              delegate: SliverChildListDelegate([
+                const SizedBox(height: 20),
+
+                // Section 1: Pengenalan LeveLearn
+                _buildInfoCard(
+                  title: "Visi LeveLearn",
+                  content:
+                      "LeveLearn adalah platform pembelajaran digital inovatif yang mengintegrasikan elemen gamifikasi untuk mentransformasi cara belajar mahasiswa Informatika. Berawal dari tantangan rendahnya keterlibatan pada e-learning konvensional, LeveLearn menciptakan ekosistem belajar yang adaptif dan memotivasi melalui pengalaman bermain (game-like experience).",
+                  icon: LineAwesomeIcons.rocket_solid,
                 ),
-            )
-        )
+
+                // Section 2: Logo Tengah (Hero Animation)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Hero(
+                      tag: 'app_logo',
+                      child: Image.asset(
+                        'lib/assets/pictures/about-logo.png',
+                        height: 100,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Section 3: Metodologi Adaptive Gamification
+                _buildInfoCard(
+                  title: "Adaptive Gamification",
+                  content:
+                      "Sebagai evolusi dari sistem statis, LeveLearn Versi 2 menerapkan pendekatan Adaptive Gamification. Sistem tidak lagi menggunakan model 'one-size-fits-all', melainkan mampu menyesuaikan elemen gamifikasi secara dinamis mengikuti perubahan preferensi dan pola perilaku pengguna selama proses pembelajaran berlangsung.",
+                  icon: LineAwesomeIcons.brain_solid,
+                ),
+
+                // Section 4: Hybrid Preference Elicitation & GMM
+                _buildInfoCard(
+                  title: "Hybrid Elicitation (ML)",
+                  content:
+                      "Melalui metode Hybrid Preference Elicitation, LeveLearn menggabungkan preferensi eksplisit (survei) dengan preferensi implisit yang dianalisis menggunakan algoritma Gaussian Mixture Model (GMM). Pendekatan Machine Learning ini mengelompokkan interaksi data log pengguna secara real-time untuk penyesuaian elemen gamifikasi yang lebih personal.",
+                  icon: LineAwesomeIcons.microchip_solid,
+                ),
+
+                // Section 5: Tech Stack
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(24, 30, 24, 15),
+                  child: Text(
+                    "Teknologi Pengembangan",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'DIN_Next_Rounded',
+                    ),
+                  ),
+                ),
+
+                _buildTechStackGrid(),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20),
+                  child: Text(
+                    "Arsitektur sistem dibangun menggunakan Flutter (Mobile), React (Web), dan Node.js Express (Backend). Data dikelola secara tangguh oleh PostgreSQL dengan Supabase Storage, serta didukung Docker untuk standarisasi deployment aplikasi.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[700],
+                      height: 1.6,
+                    ),
+                  ),
+                ),
+
+                // Button GitHub
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryColor.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        )
+                      ],
+                    ),
+                    child: ElevatedButton.icon(
+                      onPressed: () => _launchURL('https://github.com/Levelearn'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryColor,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(LineAwesomeIcons.github, color: Colors.white, size: 28),
+                      label: const Text(
+                        "Explore Source Code",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontFamily: 'DIN_Next_Rounded',
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 50),
+                const Center(
+                  child: Text(
+                    "© 2026 LeveLearn • Versi 2.0.0\nAll rights reserved.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey, fontSize: 12, height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 30),
+              ]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- HELPER WIDGETS ---
+
+  Widget _buildInfoCard({required String title, required String content, required IconData icon}) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: AppColors.primaryColor, size: 24),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'DIN_Next_Rounded',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Text(
+            content,
+            style: const TextStyle(fontSize: 14, height: 1.6, color: Colors.black87),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTechStackGrid() {
+    // Array aset gambar teknologi
+    final techIcons = [
+      'flutter.png', 'node.png', 'react.png',
+      'postgresql.png', 'supabase.png', 'docker.png'
+    ];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(25),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 15,
+          mainAxisSpacing: 15,
+        ),
+        itemCount: techIcons.length,
+        itemBuilder: (context, index) {
+          return Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFBFBFB),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Image.asset(
+              'lib/assets/pictures/${techIcons[index]}',
+              fit: BoxFit.contain,
+            ),
+          );
+        },
+      ),
     );
   }
 }

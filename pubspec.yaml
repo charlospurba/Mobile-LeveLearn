@@ -133,6 +133,7 @@ flutter:
     - lib/assets/avatars/avatar10.jpeg
     - lib/assets/avatars/avatar11.jpeg
     - lib/assets/avatars/avatar12.jpeg
+    - lib/assets/pictures/postgresql.png
 
   fonts:
     - family: DIN_Next_Rounded
