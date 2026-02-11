@@ -10,8 +10,11 @@ class ActivityService {
     Map<String, dynamic>? metadata,
   }) async {
     try {
+      // PERBAIKAN: Tambahkan /api sebelum /activity/log
+      final url = "${GlobalVar.baseUrl}/api/activity/log";
+      
       final response = await http.post(
-        Uri.parse("${GlobalVar.baseUrl}/activity/log"),
+        Uri.parse(url),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
           "userId": userId,
@@ -19,9 +22,9 @@ class ActivityService {
           "value": value,
           "metadata": metadata ?? {},
         }),
-      );
+      ).timeout(const Duration(seconds: 5));
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 201 || response.statusCode == 200) {
         print("Log $type recorded successfully");
       } else {
         print("Failed to record log: ${response.body}");

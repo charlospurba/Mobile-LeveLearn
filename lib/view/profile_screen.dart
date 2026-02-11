@@ -54,8 +54,9 @@ class _ProfileState extends State<ProfileScreen> {
 
   String userType = "Disruptors"; 
   String? currentFrameDesignId; 
-  final String apiBaseUrl = "http://10.106.207.43:7000/api"; 
-  final String serverIp = "10.106.207.43";
+
+  // PERBAIKAN: Gunakan GlobalVar untuk IP
+  final String serverIp = GlobalVar.serverIp;
 
   List<AvatarModel> availableAvatars = [
     AvatarModel(id: 1, imageUrl: 'lib/assets/avatars/avatar1.jpeg', price: 0),
@@ -78,24 +79,27 @@ class _ProfileState extends State<ProfileScreen> {
     getUserData();
   }
 
-  // Helper untuk membersihkan URL
+  // Helper untuk membersihkan URL (Disederhanakan menggunakan GlobalVar)
   String formatUrl(String? url) {
-    if (url == null || url.isEmpty) return "";
-    if (url.startsWith('lib/assets/')) return url;
-    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
-    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
-    return url;
+    return GlobalVar.formatImageUrl(url);
   }
 
   Future<void> getUserData() async {
     try {
+      if (!mounted) return;
+      setState(() => isLoading = true);
+
       prefs = await SharedPreferences.getInstance();
       final idUser = prefs.getInt('userId');
 
       if (idUser != null) {
         Student fetchedUser = await UserService.getUserById(idUser);
-        await fetchAdaptiveProfile(idUser);
-        await fetchEquippedFrame(idUser); 
+        
+        // PERBAIKAN: Jalankan AI Cluster & Frame secara paralel agar tidak stuck
+        await Future.wait([
+          fetchAdaptiveProfile(idUser),
+          fetchEquippedFrame(idUser),
+        ]);
 
         final results = await Future.wait([
           BadgeService.getUserBadgeListByUserId(idUser),
@@ -108,20 +112,13 @@ class _ProfileState extends State<ProfileScreen> {
             user = fetchedUser;
             streakDays = fetchedUser.streak;
             
-            if (results[0] is List<UserBadge>) {
-              final List<UserBadge> allBadges = results[0] as List<UserBadge>;
-              userBadges = allBadges.where((b) => !b.isPurchased).toList();
-            }
+            userBadges = (results[0] as List<UserBadge>).where((b) => !b.isPurchased).toList();
+            
+            final List<Student> allUsers = results[1] as List<Student>;
+            list = allUsers.where((u) => u.role == 'STUDENT').toList();
+            list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
 
-            if (results[1] is List<Student>) {
-              final List<Student> allUsers = results[1] as List<Student>;
-              list = allUsers.where((u) => u.role == 'STUDENT').toList();
-              list.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
-            }
-
-            if (results[2] is List<Course>) {
-              allCourses = results[2] as List<Course>;
-            }
+            allCourses = results[2] as List<Course>;
 
             for (int i = 0; i < list.length; i++) {
               if (list[i].id == user?.id) {
@@ -141,7 +138,8 @@ class _ProfileState extends State<ProfileScreen> {
 
   Future<void> fetchEquippedFrame(int userId) async {
     try {
-      final response = await http.get(Uri.parse("$apiBaseUrl/usertrade/equipped/$userId"));
+      // PERBAIKAN: Tambahkan /api/
+      final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/usertrade/equipped/$userId"));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted && data != null && data['trade'] != null) {
@@ -156,9 +154,10 @@ class _ProfileState extends State<ProfileScreen> {
   }
 
   Future<void> fetchAdaptiveProfile(int idUser) async {
-    final String url = "$apiBaseUrl/user/adaptive/$idUser";
+    // PERBAIKAN: Jalur API yang benar & timeout lebih lama
+    final String url = "${GlobalVar.baseUrl}/api/user/adaptive/$idUser";
     try {
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
@@ -168,7 +167,7 @@ class _ProfileState extends State<ProfileScreen> {
         }
       }
     } catch (e) {
-      debugPrint("Gagal sinkron cluster di Profile: $e");
+      debugPrint("Gagal sinkron cluster di Profile (Timeout): $e");
     }
   }
 
@@ -237,9 +236,9 @@ class _ProfileState extends State<ProfileScreen> {
 
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: GlobalVar.primaryColor,
-        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
+        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
       ),
       padding: const EdgeInsets.only(bottom: 32, top: 20),
       child: Column(
@@ -295,7 +294,9 @@ class _ProfileState extends State<ProfileScreen> {
             child: imgPath != null && imgPath.isNotEmpty
                 ? (imgPath.startsWith('lib/assets/')
                     ? Image.asset(imgPath, fit: BoxFit.cover)
-                    : Image.network(formatUrl(imgPath), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.person, size: 80, color: Colors.white)))
+                    : Image.network(formatUrl(imgPath), 
+                        fit: BoxFit.cover, 
+                        errorBuilder: (c, e, s) => const Icon(Icons.person, size: 80, color: Colors.white)))
                 : const Icon(Icons.person, size: 80, color: Colors.white),
           ),
         ),

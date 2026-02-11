@@ -28,30 +28,34 @@ class _TradeScreenState extends State<TradeScreen> {
   bool isLoading = true;
   String userType = "Players"; 
   int currentPoints = 0; 
-  final String serverIp = "10.106.207.43"; 
 
   @override
   void initState() {
     super.initState();
     currentPoints = widget.user.points ?? 0;
     _fetchUserTypeAndData();
+    // Mencatat aktivitas eksplorasi ke log activity
     ActivityService.sendLog(userId: widget.user.id, type: 'EXPLORATION_EVENTS', value: 1.0);
   }
 
+  // Fungsi helper format URL yang merujuk ke GlobalVar (Mencegah error gambar tidak muncul)
   String formatUrl(String? url) {
-    if (url == null || url.isEmpty) return "";
-    if (url.startsWith('lib/assets/')) return url;
-    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
-    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
-    return url;
+    return GlobalVar.formatImageUrl(url);
   }
 
   Future<void> _fetchUserTypeAndData() async {
     try {
-      final String url = "http://10.106.207.43:7000/api/user/adaptive/${widget.user.id}";
-      final profileResponse = await http.get(Uri.parse(url));
+      if (!mounted) return;
+      setState(() => isLoading = true);
+
+      // 1. Ambil Profil Adaptif (Cluster)
+      final String adaptiveUrl = "${GlobalVar.baseUrl}/api/user/adaptive/${widget.user.id}";
+      final profileResponse = await http.get(Uri.parse(adaptiveUrl)).timeout(const Duration(seconds: 10));
       
+      // 2. Refresh data poin user terbaru
       final Student updatedUser = await UserService.getUserById(widget.user.id);
+      
+      // 3. Ambil data trade & kepemilikan
       final allTrades = await TradeService.getAllTrades();
       final ownedTrades = await TradeService.getUserTrade(widget.user.id);
       
@@ -68,6 +72,7 @@ class _TradeScreenState extends State<TradeScreen> {
         trades = allTrades;
         userTrade = ownedTrades;
         
+        // Tandai item yang sudah dimiliki
         final tradeIds = userTrade.map((t) => t.tradeId).toSet();
         for (var t in trades) {
           t.hasTrade = tradeIds.contains(t.id);
@@ -75,7 +80,7 @@ class _TradeScreenState extends State<TradeScreen> {
         isLoading = false;
       });
     } catch (e) {
-      debugPrint("Error fetching data: $e");
+      debugPrint("Error fetching trade data: $e");
       if (mounted) setState(() => isLoading = false);
     }
   }
@@ -83,14 +88,16 @@ class _TradeScreenState extends State<TradeScreen> {
   void _equipFrameAction(int tradeId) async {
     try {
       final response = await http.post(
-        Uri.parse("http://10.106.207.43:7000/api/usertrade/equip"),
+        Uri.parse("${GlobalVar.baseUrl}/api/usertrade/equip"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({"userId": widget.user.id, "tradeId": tradeId}),
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bingkai berhasil dipasang!")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Bingkai berhasil dipasang!", style: TextStyle(fontFamily: 'DIN_Next_Rounded')))
+        );
         _fetchUserTypeAndData(); 
       }
     } catch (e) {
@@ -100,10 +107,12 @@ class _TradeScreenState extends State<TradeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Filter item berdasarkan kategori
     final avatarItems = trades.where((t) => t.category == "AVATAR" || t.title.toLowerCase().contains('avatar')).toList();
     final rewardTrades = trades.where((t) => t.category == "REWARD" && !t.title.toLowerCase().contains('avatar')).toList();
     final shopFrames = trades.where((t) => t.category == "FRAME").toList();
 
+    // Logic Adaptive UI (Gamifikasi sesuai tipe user)
     bool showRewards = userType != "Disruptors";
     bool showShop = (userType != "Achievers" && userType != "Free Spirits"); 
     
@@ -122,6 +131,24 @@ class _TradeScreenState extends State<TradeScreen> {
             onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const Mainscreen(navIndex: 4))),
             icon: const Icon(LineAwesomeIcons.angle_left_solid),
           ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(15)),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.stars, color: Colors.amber, size: 16),
+                      const SizedBox(width: 4),
+                      Text("$currentPoints", style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          ],
           bottom: TabBar(
             indicatorColor: Colors.white,
             labelColor: Colors.white,
@@ -134,14 +161,18 @@ class _TradeScreenState extends State<TradeScreen> {
         ),
         body: Container(
           decoration: const BoxDecoration(
-            image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover, opacity: 0.1),
+            image: DecorationImage(
+              image: AssetImage('lib/assets/pictures/background-pattern.png'), 
+              fit: BoxFit.cover, 
+              opacity: 0.1
+            ),
           ),
           child: isLoading 
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primaryColor))
             : TabBarView(
                 children: [
                   _buildAvatarGrid(avatarItems), 
-                  if (showRewards) _buildTradeList(rewardTrades, "Hadiah dari Badge Anda"),
+                  if (showRewards) _buildTradeList(rewardTrades, "Klaim hadiah dari progres belajar Anda"),
                   if (showShop) _buildShopGrid(shopFrames), 
                 ],
               ),
@@ -164,6 +195,7 @@ class _TradeScreenState extends State<TradeScreen> {
         bool isLocal = imgPath.startsWith('lib/assets/');
 
         return Card(
+          elevation: 4,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
             children: [
@@ -174,22 +206,22 @@ class _TradeScreenState extends State<TradeScreen> {
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: isLocal
-                          ? Image.asset(imgPath, width: 70, height: 70, fit: BoxFit.cover)
+                          ? Image.asset(imgPath, width: 75, height: 75, fit: BoxFit.cover)
                           : Image.network(
                               formatUrl(imgPath), 
-                              width: 70, height: 70, fit: BoxFit.cover, 
-                              errorBuilder: (c,e,s) => const Icon(Icons.face, size: 50)
+                              width: 75, height: 75, fit: BoxFit.cover, 
+                              errorBuilder: (c,e,s) => const Icon(Icons.face, size: 50, color: Colors.grey)
                             ),
                       )
-                    : const Icon(Icons.face, size: 50),
+                    : const Icon(Icons.face, size: 50, color: AppColors.primaryColor),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(10.0),
                 child: Column(
                   children: [
-                    Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 5),
+                    Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'DIN_Next_Rounded'), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -197,8 +229,11 @@ class _TradeScreenState extends State<TradeScreen> {
                           await Navigator.push(context, MaterialPageRoute(builder: (context) => TradeDetailScreen(trade: item, user: widget.user, userType: userType)));
                           _fetchUserTypeAndData();
                         },
-                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
-                        child: const Text("Tukar", style: TextStyle(color: Colors.white, fontSize: 11)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                        ),
+                        child: Text(item.hasTrade ? "Lihat" : "Tukar", style: const TextStyle(color: Colors.white, fontSize: 11)),
                       ),
                     )
                   ],
@@ -219,11 +254,12 @@ class _TradeScreenState extends State<TradeScreen> {
       itemBuilder: (context, index) {
         final trade = list[index];
         return Card(
+          elevation: 2,
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: ListTile(
-            leading: const Icon(Icons.card_giftcard, color: Colors.blue),
-            title: Text(trade.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.card_giftcard, color: Colors.white)),
+            title: Text(trade.title, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
             subtitle: Text(subtitleText, style: const TextStyle(fontSize: 12)),
             trailing: trade.hasTrade ? const Icon(Icons.check_circle, color: Colors.green) : const Icon(LineAwesomeIcons.angle_right_solid),
             onTap: () async {
@@ -248,24 +284,33 @@ class _TradeScreenState extends State<TradeScreen> {
         final item = frames[index];
         bool canAfford = currentPoints >= item.priceInPoints;
         return Card(
+          elevation: 4,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Column(
             children: [
               Expanded(
                 child: Center(
                   child: SizedBox(
-                    width: 80, height: 80,
+                    width: 85, height: 85,
                     child: CustomPaint(painter: AvatarFramePainter(item.image.isNotEmpty ? item.image : "null")),
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(10.0),
                 child: Column(
                   children: [
-                    Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1),
-                    Text("${item.priceInPoints} Pts", style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 5),
+                    Text(item.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'DIN_Next_Rounded'), maxLines: 1),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.stars, color: Colors.amber, size: 14),
+                        const SizedBox(width: 4),
+                        Text("${item.priceInPoints} Pts", style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -273,8 +318,8 @@ class _TradeScreenState extends State<TradeScreen> {
                             ? () => _equipFrameAction(item.id) 
                             : (canAfford ? () => _processShopPurchase(item) : null),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: item.hasTrade ? Colors.green : AppColors.primaryColor,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                          backgroundColor: item.hasTrade ? Colors.green : (canAfford ? AppColors.primaryColor : Colors.grey),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                         ),
                         child: Text(
                           item.hasTrade ? "Gunakan" : (canAfford ? "Beli" : "Poin Kurang"), 
@@ -296,21 +341,24 @@ class _TradeScreenState extends State<TradeScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Konfirmasi"),
+        title: const Text("Konfirmasi Pembelian", style: TextStyle(fontFamily: 'DIN_Next_Rounded')),
         content: Text("Beli ${item.title} seharga ${item.priceInPoints} poin?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal")),
-          TextButton(
+          ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
               bool success = await TradeService.buyShopItem(widget.user.id, item.id, item.priceInPoints);
               if (success) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Berhasil membeli ${item.title}!")));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("Berhasil membeli ${item.title}!", style: const TextStyle(fontFamily: 'DIN_Next_Rounded')))
+                );
                 await _fetchUserTypeAndData(); 
               }
             }, 
-            child: const Text("Ya, Beli")
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
+            child: const Text("Beli Sekarang", style: TextStyle(color: Colors.white))
           ),
         ],
       )

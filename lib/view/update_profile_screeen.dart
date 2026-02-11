@@ -1,17 +1,17 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:app/global_var.dart';
 import 'package:app/model/user.dart';
 import 'package:app/view/main_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 import 'package:app/view/profile_screen.dart';
 import '../service/user_service.dart';
@@ -51,11 +51,18 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     super.initState();
   }
 
+  // Helper URL yang merujuk ke GlobalVar
+  String formatUrl(String? url) {
+    return GlobalVar.formatImageUrl(url);
+  }
+
   void _loadData() async {
     prefs = await SharedPreferences.getInstance();
     try {
       // Sinkronisasi Cluster User (Achievers/Disruptors/etc)
-      final response = await http.get(Uri.parse("http://10.106.207.43:7000/api/user/adaptive/${widget.user.id}"));
+      final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/user/adaptive/${widget.user.id}"))
+          .timeout(const Duration(seconds: 15));
+          
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) setState(() => userType = data['currentCluster'] ?? "Disruptors");
@@ -63,10 +70,12 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
 
       // Ambil data ID avatar yang sudah dibeli
       List<int> dbAvatars = await UserService.getPurchasedAvatarsFromDb(widget.user.id);
-      setState(() {
-        purchasedAvatarIds = dbAvatars.toSet();
-        purchasedAvatarIds.add(1); // ID 1 adalah default
-      });
+      if (mounted) {
+        setState(() {
+          purchasedAvatarIds = dbAvatars.toSet();
+          purchasedAvatarIds.add(1); // ID 1 adalah default
+        });
+      }
     } catch (e) {
       debugPrint("Sync Error: $e");
     }
@@ -81,7 +90,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     return 350; 
   }
 
-  // MODAL PEMILIHAN AVATAR (Posisi dinaikkan dengan height 0.8)
   Future<void> _showAvatarSelectionDialog(BuildContext context) {
     final myOwnedAvatars = widget.availableAvatars.where((a) => purchasedAvatarIds.contains(a.id)).toList();
     final shopAvatars = widget.availableAvatars.where((a) => !purchasedAvatarIds.contains(a.id)).toList();
@@ -93,7 +101,7 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
       builder: (context) => StatefulBuilder(
         builder: (context, setStateModal) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          height: MediaQuery.of(context).size.height * 0.8, // Posisi lebih tinggi
+          height: MediaQuery.of(context).size.height * 0.8, 
           child: Column(
             children: [
               const SizedBox(height: 12),
@@ -125,7 +133,7 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
   }
 
   Widget _buildAvatarGrid(List<AvatarModel> items, {required bool isShop}) {
-    if (items.isEmpty) return Center(child: Text(isShop ? "Semua avatar telah dibeli!" : "Belum ada avatar."));
+    if (items.isEmpty) return Center(child: Text(isShop ? "Semua avatar telah dibeli!" : "Belum ada avatar.", style: const TextStyle(fontFamily: 'DIN_Next_Rounded')));
     return GridView.builder(
       padding: const EdgeInsets.only(top: 20),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -178,11 +186,16 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Konfirmasi'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text('Konfirmasi', style: TextStyle(fontFamily: 'DIN_Next_Rounded')),
         content: Text('Beli avatar seharga $price poin?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Beli')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text('Beli', style: TextStyle(color: Colors.white))
+          ),
         ],
       ),
     );
@@ -190,6 +203,7 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     if (confirm == true) {
       showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator()));
       bool success = await UserService.savePurchasedAvatarToDb(user!.id, avatar.id);
+      
       if (mounted) Navigator.pop(context); 
 
       if (success) {
@@ -200,7 +214,10 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
           selectedAvatarUrl = avatar.imageUrl;
         });
         await UserService.updateUser(user!); 
-        if (mounted) Navigator.pop(context); 
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avatar berhasil dibeli!')));
+           Navigator.pop(context); // Tutup gallery
+        }
       }
     }
   }
@@ -208,7 +225,11 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: AppColors.primaryColor, title: const Text("Update Profile", style: TextStyle(color: Colors.white, fontFamily: 'DIN_Next_Rounded'))),
+      appBar: AppBar(
+        backgroundColor: AppColors.primaryColor, 
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Update Profile", style: TextStyle(color: Colors.white, fontFamily: 'DIN_Next_Rounded'))
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
@@ -217,9 +238,13 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
             child: Stack(children: [
               SizedBox(width: 120, height: 120, child: ClipRRect(
                 borderRadius: BorderRadius.circular(100),
-                child: photo != null ? (kIsWeb ? Image.memory(photo!.bytes!, fit: BoxFit.cover) : Image.file(File(photo!.path!), fit: BoxFit.cover))
-                : (selectedAvatarUrl != null ? (selectedAvatarUrl!.startsWith('lib/assets/') ? Image.asset(selectedAvatarUrl!, fit: BoxFit.cover) : Image.network(selectedAvatarUrl!, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Icon(Icons.person, size: 80)))
-                : const Icon(Icons.person, size: 100)),
+                child: photo != null 
+                  ? (kIsWeb ? Image.memory(photo!.bytes!, fit: BoxFit.cover) : Image.file(File(photo!.path!), fit: BoxFit.cover))
+                  : (selectedAvatarUrl != null 
+                      ? (selectedAvatarUrl!.startsWith('lib/assets/') 
+                          ? Image.asset(selectedAvatarUrl!, fit: BoxFit.cover) 
+                          : Image.network(formatUrl(selectedAvatarUrl!), fit: BoxFit.cover, errorBuilder: (c,e,s) => const Icon(Icons.person, size: 80)))
+                      : const Icon(Icons.person, size: 100)),
               )),
               Positioned(bottom: 0, right: 0, child: CircleAvatar(backgroundColor: AppColors.secondaryColor, child: IconButton(icon: const Icon(Icons.camera_alt, color: Colors.white), onPressed: _showUpdatePhotoMenu)))
             ]),
@@ -234,7 +259,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
               onPressed: () async {
                 showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator()));
                 
-                // Proses Upload jika ada file baru dari galeri
                 if (photo != null) {
                    final comp = await compressImage(photo!);
                    if (comp != null) await uploadPhotoProfile(comp, 'profile_${user!.id}.jpg');
@@ -247,7 +271,7 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
                 
                 await UserService.updateUser(user!);
                 if (mounted) {
-                  Navigator.pop(context); // Tutup loading
+                  Navigator.pop(context); 
                   _showDialog(context);
                 }
               },
@@ -259,7 +283,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     );
   }
 
-  // MENU POP-UP: Disruptors langsung buka galeri, tipe lain ada opsi My Avatar
   void _showUpdatePhotoMenu() {
     if (userType == "Disruptors") {
       _pickFromGallery();
@@ -279,7 +302,7 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
                 Navigator.pop(context);
                 _pickFromGallery();
               }),
-              ListTile(leading: const Icon(Icons.face_retouching_natural), title: const Text("My Avatar", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), onTap: () {
+              ListTile(leading: const Icon(Icons.face_retouching_natural), title: const Text("Gallery Avatar", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), onTap: () {
                 Navigator.pop(context);
                 _showAvatarSelectionDialog(context);
               }),
@@ -310,7 +333,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     ]);
   }
 
-  // FUNGSI UPLOAD: Menggunakan bucket 'images' dan upsert:true
   Future<void> uploadPhotoProfile(XFile file, String filename) async {
     try {
       final storagePath = 'profile/$filename';
@@ -322,20 +344,18 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
             storagePath, 
             fileBytes,
             fileOptions: const FileOptions(
-              upsert: true, // Timpa file lama agar tidak error 403 duplikat
+              upsert: true,
               contentType: 'image/jpeg',
             ), 
           );
 
-      // Ambil URL Publik
       selectedAvatarUrl = Supabase.instance.client.storage
           .from('images')
           .getPublicUrl(storagePath);
           
-      debugPrint("Upload Berhasil: $selectedAvatarUrl");
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cek Storage Policy Supabase: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -348,8 +368,16 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
   }
 
   void _showDialog(BuildContext context) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("Success", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), content: const Text("Profile Updated.", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), actions: [
-      TextButton(onPressed: () { Navigator.popUntil(context, (r) => r.isFirst); Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => Mainscreen(navIndex: 4))); }, child: const Text("OK"))
-    ]));
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text("Success", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), 
+      content: const Text("Profile Updated.", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), 
+      actions: [
+        TextButton(onPressed: () { 
+          Navigator.popUntil(context, (r) => r.isFirst); 
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => const Mainscreen(navIndex: 4))); 
+        }, child: const Text("OK"))
+      ]
+    ));
   }
 }

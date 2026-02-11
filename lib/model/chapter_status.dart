@@ -12,6 +12,8 @@ class ChapterStatus {
   List<String> assessmentAnswer;
   int assessmentGrade;
   String? submission;
+  // Field Baru untuk Riwayat Pengiriman
+  List<String> submissionHistory; 
   DateTime timeStarted;
   DateTime timeFinished;
   int assignmentScore;
@@ -31,6 +33,7 @@ class ChapterStatus {
     required this.assessmentAnswer,
     required this.assessmentGrade,
     this.submission,
+    required this.submissionHistory, // Tambahkan ke constructor
     required this.timeStarted,
     required this.timeFinished,
     required this.assignmentScore,
@@ -40,18 +43,21 @@ class ChapterStatus {
   });
 
   factory ChapterStatus.fromJson(Map<String, dynamic> json) {
-    // Helper untuk menangani list jawaban baik dari string JSON maupun list langsung
-    List<String> parseAnswers(dynamic answers) {
-      if (answers == null) return [];
-      if (answers is String) {
+    // Helper untuk menangani list/array baik dari string JSON maupun list langsung
+    List<String> parseJsonList(dynamic data) {
+      if (data == null) return [];
+      if (data is String) {
         try {
-          return (jsonDecode(answers) as List).map((e) => e.toString()).toList();
+          final decoded = jsonDecode(data);
+          if (decoded is List) {
+            return decoded.map((e) => e.toString()).toList();
+          }
         } catch (_) {
           return [];
         }
       }
-      if (answers is List) {
-        return answers.map((e) => e.toString()).toList();
+      if (data is List) {
+        return data.map((e) => e.toString()).toList();
       }
       return [];
     }
@@ -65,9 +71,11 @@ class ChapterStatus {
       materialDone: json['materialDone'] ?? false,
       assessmentDone: json['assessmentDone'] ?? false,
       assignmentDone: json['assignmentDone'] ?? false,
-      assessmentAnswer: parseAnswers(json['assessmentAnswer']),
+      assessmentAnswer: parseJsonList(json['assessmentAnswer']),
       assessmentGrade: json['assessmentGrade'] ?? 0,
       submission: json['submission'],
+      // Parsing riwayat pengiriman dari database
+      submissionHistory: parseJsonList(json['submissionHistory']),
       timeStarted: DateTime.parse(json['timeStarted'] ?? DateTime.now().toIso8601String()),
       timeFinished: DateTime.parse(json['timeFinished'] ?? DateTime.now().toIso8601String()),
       assignmentScore: json['assignmentScore'] ?? 0,
@@ -87,9 +95,11 @@ class ChapterStatus {
       'materialDone': materialDone,
       'assessmentDone': assessmentDone,
       'assignmentDone': assignmentDone,
-      'assessmentAnswer': jsonEncode(assessmentAnswer), // Encode ke string JSON untuk DB
+      'assessmentAnswer': assessmentAnswer, // Biarkan dalam bentuk list untuk diproses Prisma
       'assessmentGrade': assessmentGrade,
       'submission': submission,
+      // Mengirim list riwayat kembali ke backend
+      'submissionHistory': submissionHistory, 
       'timeStarted': timeStarted.toUtc().toIso8601String(),
       'timeFinished': timeFinished.toUtc().toIso8601String(),
       'assignmentScore': assignmentScore,

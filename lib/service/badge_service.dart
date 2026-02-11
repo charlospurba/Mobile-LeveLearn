@@ -5,15 +5,25 @@ import 'package:http/http.dart' as http;
 import '../global_var.dart';
 
 class BadgeService {
+  // Helper konsistensi API prefix
+  static String get _apiPath => "${GlobalVar.baseUrl}/api";
+
   static Future<List<BadgeModel>> getBadgeListCourseByCourseId(int courseId) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/course/$courseId/badges'));
-      // Deklarasi explisit List agar tidak dianggap Map oleh compiler JS
+      final response = await http.get(Uri.parse('$_apiPath/course/$courseId/badges'))
+          .timeout(const Duration(seconds: 10));
+
+      // Mencegah error jika server balas HTML (404)
+      if (response.body.startsWith('<!DOCTYPE html>')) {
+        print("Error: Backend mengembalikan HTML 404 untuk Badge Course");
+        return [];
+      }
+
       final List<dynamic> result = jsonDecode(response.body);
-      
       return result.map((q) => BadgeModel.fromJson(q)).toList();
     } catch (e) {
-      throw Exception("Error fetching badges: ${e.toString()}");
+      print("Badge Service Error (Course): $e");
+      return [];
     }
   }
 
@@ -25,47 +35,49 @@ class BadgeService {
         "isPurchased": false
       };
       final response = await http.post(
-        Uri.parse('${GlobalVar.baseUrl}/userbadge'), 
+        Uri.parse('$_apiPath/userbadge'), 
         headers: {
           'Content-type' : 'application/json; charset=utf-8',
           'Accept': 'application/json',
         }, 
         body: jsonEncode(request)
-      );
+      ).timeout(const Duration(seconds: 10));
 
       final result = jsonDecode(response.body);
-      print(result['message']);
+      print("DEBUG CREATE BADGE: ${result['message']}");
     } catch (e) {
-      throw Exception(e.toString());
+      print("Error creating user badge: $e");
     }
   }
 
   static Future<List<UserBadge>> getUserBadgeListByUserId(int userId) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$userId/badges'));
-      final dynamic decodedResponse = jsonDecode(response.body);
+      final response = await http.get(Uri.parse('$_apiPath/user/$userId/badges'))
+          .timeout(const Duration(seconds: 10));
 
-      // Cek apakah response berupa List
-      if (decodedResponse is List) {
-        return decodedResponse.map((json) => UserBadge.fromJson(json)).toList();
-      } else {
-        // Jika backend mengirim data kosong dalam bentuk objek {} atau null
+      if (response.body.startsWith('<!DOCTYPE html>')) {
+        print("Error: Backend mengembalikan HTML 404 untuk User Badge");
         return [];
       }
+
+      final dynamic decodedResponse = jsonDecode(response.body);
+      if (decodedResponse is List) {
+        return decodedResponse.map((json) => UserBadge.fromJson(json)).toList();
+      } 
+      return [];
     } catch (e) {
-      print("Badge Service Error: $e");
-      return []; // Kembalikan list kosong daripada melempar error agar profil tetap bisa terbuka
+      print("Badge Service Error (User): $e");
+      return [];
     }
   }
 
   static Future<BadgeModel> getBadgeById(int badgeId) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/badge/$badgeId'));
+      final response = await http.get(Uri.parse('$_apiPath/badge/$badgeId'))
+          .timeout(const Duration(seconds: 10));
+      
       final result = jsonDecode(response.body);
-
-      if (result == null) {
-        throw Exception("Badge not found");
-      }
+      if (result == null) throw Exception("Badge not found");
 
       return BadgeModel.fromJson(result);
     } catch (e) {

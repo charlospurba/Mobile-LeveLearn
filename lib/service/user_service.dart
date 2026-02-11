@@ -1,71 +1,85 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:app/model/login.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
+
+import '../model/login.dart';
 import '../model/user_challenge.dart'; 
 import '../model/user.dart';
 import '../global_var.dart';
 
 class UserService {
-  // --- FUNGSI AMBIL DATA USER ---
-  
-  static Future<List<Student>> getAllUser() async {
-    try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user'));
-      final result = jsonDecode(response.body);
-      List<Student> users = List<Student>.from(
-        result.map((user) => Student.fromJson(user)),
-      );
-      return users;
-    } catch (e) {
-      throw Exception(e.toString());
-    }
-  }
-
-  static Future<Student> getUserById(int id) async {
-    try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$id'));
-      final result = jsonDecode(response.body);
-      Student users = Student.fromJson(result);
-      return users;
-    } catch (e) {
-      throw Exception(e.toString());
-    }
-  }
+  // Helper agar semua URL otomatis menggunakan prefix /api secara konsisten
+  // Merujuk ke GlobalVar.baseUrl (http://10.107.253.43:7000)
+  static String get _apiPath => "${GlobalVar.baseUrl}/api";
 
   // --- FUNGSI AUTHENTICATION ---
 
   static Future<Map<String, dynamic>> login(String username, String password) async {
-    final uri = Uri.parse('${GlobalVar.baseUrl}/login');
+    final uri = Uri.parse('$_apiPath/login');
     final request = {'username': username, 'password': password};
+    
     try {
-      final response = await http.post(uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: jsonEncode(request)).timeout(const Duration(seconds: 10));
+      print("LOG: Mencoba POST login ke $uri");
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: jsonEncode(request)
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        final login = Login(
+        final loginData = Login(
           id: result['data']['id'],
           name: result['data']['name'],
           role: result['data']['role'],
           token: result['token'],
         );
-        return {'value': login, 'code': 200};
+        return {'value': loginData, 'code': 200};
       } else {
-        final body = response.body.isNotEmpty ? jsonDecode(response.body) : {'message': 'Empty response'};
-        return {'code': response.statusCode, 'message': body['message'] ?? body};
+        final body = response.body.isNotEmpty ? jsonDecode(response.body) : {'message': 'Gagal masuk'};
+        return {'code': response.statusCode, 'message': body['message'] ?? 'Login Gagal'};
       }
     } catch (e) {
-      return {'code': 0, 'message': e.toString()};
+      print("DETAIL ERROR LOGIN: $e");
+      return {
+        'code': 0, 
+        'message': "Timeout/Koneksi Gagal. Pastikan Laptop & HP satu WiFi dan Firewall Laptop mati."
+      };
     }
   }
 
-  // --- FUNGSI UPDATE PROFIL & STREAK ---
+  // --- FUNGSI AMBIL DATA USER ---
+
+  static Future<List<Student>> getAllUser() async {
+    try {
+      final response = await http.get(Uri.parse('$_apiPath/user'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final List result = jsonDecode(response.body);
+        return result.map((user) => Student.fromJson(user)).toList();
+      }
+      throw Exception("Gagal mengambil data: ${response.statusCode}");
+    } catch (e) {
+      throw Exception("Error getAllUser: $e");
+    }
+  }
+
+  static Future<Student> getUserById(int id) async {
+    try {
+      final response = await http.get(Uri.parse('$_apiPath/user/$id'))
+          .timeout(const Duration(seconds: 10));
+      final result = jsonDecode(response.body);
+      return Student.fromJson(result);
+    } catch (e) {
+      throw Exception("Error getUserById: $e");
+    }
+  }
+
+  // --- FUNGSI UPDATE PROFIL, STREAK & PASSWORD ---
 
   static Future<Student> updateUser(Student user) async {
     try {
@@ -83,26 +97,28 @@ class UserService {
         "instructorId": user.instructorId,
         "instructorCourses": user.instructorCourses
       };
+      
       final response = await http.put(
-          Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-          headers: {
-            'Content-type': 'application/json; charset=utf-8',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(request));
+        Uri.parse('$_apiPath/user/${user.id}'),
+        headers: {
+          'Content-type': 'application/json; charset=utf-8',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode(request)
+      ).timeout(const Duration(seconds: 10));
 
       final result = jsonDecode(response.body);
-      return Student.fromJson(result['user'] ?? result['data'] ?? result);
+      final userData = result['user'] ?? result['data'] ?? result;
+      return Student.fromJson(userData);
     } catch (e) {
-      throw Exception(e.toString());
+      throw Exception("Error updateUser: $e");
     }
   }
 
-  // BARU: Fungsi untuk mengirim data kustom ke backend (untuk trigger Challenge Akurat)
   static Future<void> updateUserRaw(int userId, Map<String, dynamic> data) async {
     try {
       final response = await http.put(
-          Uri.parse('${GlobalVar.baseUrl}/user/$userId'),
+          Uri.parse('$_apiPath/user/$userId'),
           headers: {
             'Content-type': 'application/json; charset=utf-8',
             'Accept': 'application/json',
@@ -116,40 +132,34 @@ class UserService {
 
   static Future<void> updatePassword(Student user) async {
     try {
-      Map<String, dynamic> request = {"password": user.password};
-      await http.put(Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-          headers: {
-            'Content-type': 'application/json; charset=utf-8',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(request));
+      await http.put(
+        Uri.parse('$_apiPath/user/${user.id}'),
+        headers: {'Content-type': 'application/json'},
+        body: jsonEncode({"password": user.password})
+      ).timeout(const Duration(seconds: 10));
     } catch (e) {
-      throw Exception(e.toString());
+      throw Exception("Gagal update password: $e");
     }
   }
 
-  // --- FUNGSI UPDATE POIN ---
+  // --- FUNGSI UPDATE POIN & BADGE ---
 
   static Future<Student> updateUserPoints(Student user) async {
     try {
-      Map<String, dynamic> request = {"points": user.points};
       final response = await http.put(
-          Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
-          headers: {
-            'Content-type': 'application/json; charset=utf-8',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode(request));
+        Uri.parse('$_apiPath/user/${user.id}'),
+        headers: {'Content-type': 'application/json'},
+        body: jsonEncode({"points": user.points})
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
         final userData = result['user'] ?? result['data'] ?? result;
         return Student.fromJson(userData);
-      } else {
-        throw Exception("Server Error: ${response.statusCode}");
       }
+      throw Exception("Server error saat update poin");
     } catch (e) {
-      throw Exception(e.toString());
+      throw Exception("Error updatePoints: $e");
     }
   }
 
@@ -160,7 +170,7 @@ class UserService {
         "badges": user.badges,
       };
       final response = await http.put(
-          Uri.parse('${GlobalVar.baseUrl}/user/${user.id}'),
+          Uri.parse('$_apiPath/user/${user.id}'),
           headers: {
             'Content-type': 'application/json; charset=utf-8',
             'Accept': 'application/json',
@@ -174,12 +184,30 @@ class UserService {
     }
   }
 
-  // --- FUNGSI CHALLENGE TRIGGER ---
+  // --- FUNGSI CHALLENGE ---
+
+  static Future<List<UserChallenge>> getUserChallenges(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_apiPath/user/$userId/challenges'),
+        headers: {'Accept': 'application/json'}
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final List result = jsonDecode(response.body);
+        return result.map((json) => UserChallenge.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching challenges: $e");
+      return [];
+    }
+  }
 
   static Future<void> triggerChallengeManual(int userId, String type) async {
     try {
       final response = await http.post(
-        Uri.parse('${GlobalVar.baseUrl}/user/trigger-challenge'),
+        Uri.parse('$_apiPath/user/trigger-challenge'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
@@ -199,35 +227,16 @@ class UserService {
     return triggerChallengeManual(userId, type);
   }
 
-  // --- FUNGSI DATA CHALLENGE & REWARD ---
-
-  static Future<List<UserChallenge>> getUserChallenges(int userId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('${GlobalVar.baseUrl}/user/$userId/challenges'),
-        headers: {'Accept': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final List<dynamic> result = jsonDecode(response.body);
-        return result.map((json) => UserChallenge.fromJson(json)).toList();
-      }
-      return [];
-    } catch (e) {
-      return [];
-    }
-  }
-
   static Future<bool> claimChallengeReward(int userId, int userChallengeId) async {
     try {
       final response = await http.post(
-        Uri.parse('${GlobalVar.baseUrl}/user/claim-challenge'),
+        Uri.parse('$_apiPath/user/claim-challenge'),
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({
           'userId': userId,
           'userChallengeId': userChallengeId,
-        }),
-      );
+        })
+      ).timeout(const Duration(seconds: 10));
       return response.statusCode == 200;
     } catch (e) {
       return false;
@@ -239,7 +248,7 @@ class UserService {
   static Future<bool> savePurchasedAvatarToDb(int userId, int avatarId) async {
     try {
       final response = await http.post(
-        Uri.parse('${GlobalVar.baseUrl}/user/purchase-avatar'),
+        Uri.parse('$_apiPath/user/purchase-avatar'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
@@ -247,8 +256,8 @@ class UserService {
         body: jsonEncode({
           'user_id': userId,
           'avatar_id': avatarId,
-        }),
-      );
+        })
+      ).timeout(const Duration(seconds: 10));
       return (response.statusCode == 200 || response.statusCode == 201);
     } catch (e) {
       return false;
@@ -258,13 +267,13 @@ class UserService {
   static Future<List<int>> getPurchasedAvatarsFromDb(int userId) async {
     try {
       final response = await http.get(
-        Uri.parse('${GlobalVar.baseUrl}/user/$userId/avatars'),
-        headers: {'Accept': 'application/json'},
-      );
+        Uri.parse('$_apiPath/user/$userId/avatars'),
+        headers: {'Accept': 'application/json'}
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final result = jsonDecode(response.body);
-        List<dynamic> data = result['data'] ?? []; 
+        List data = result['data'] ?? []; 
         return data.map((item) => int.parse(item['avatar_id'].toString())).toList();
       }
       return [1];

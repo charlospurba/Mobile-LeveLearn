@@ -4,9 +4,6 @@ import 'package:app/view/course_initial_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../model/course.dart';
-
-// Import GlobalVar jika Anda meletakkan fungsi formatUrl di sana, 
-// atau gunakan variabel lokal seperti di bawah ini.
 import 'package:app/global_var.dart';
 
 class MycourseScreen extends StatefulWidget {
@@ -23,31 +20,31 @@ class _CourseDetail extends State<MycourseScreen> {
   late SharedPreferences pref;
   List<Course> allCourses = [];
   List<Course> filteredCourses = [];
-  
-  // Konfigurasi IP untuk akses gambar dari server lokal
-  final String serverIp = "10.106.207.43";
+  bool isLoading = true;
+
+  // Mengambil IP dan Default Image dari GlobalVar agar terpusat
+  final String serverIp = GlobalVar.serverIp;
   final String defaultImageUrl = 'https://www.globalcareercounsellor.com/blog/wp-content/uploads/2018/05/Online-Career-Counselling-course.jpg';
 
   @override
   void initState() {
     super.initState();
     getEnrolledCourse();
+    
     _focusNode.addListener(() {
-      setState(() {
-        _isFocused = _focusNode.hasFocus;
-      });
+      if (mounted) {
+        setState(() {
+          _isFocused = _focusNode.hasFocus;
+        });
+      }
     });
 
     _searchController.addListener(_filterCourses);
   }
 
-  // Fungsi helper untuk memperbaiki URL gambar agar muncul di HP
+  // Fungsi helper untuk memperbaiki URL gambar (Sinkron dengan GlobalVar)
   String formatUrl(String? url) {
-    if (url == null || url.isEmpty) return "";
-    if (url.startsWith('lib/assets/')) return url;
-    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
-    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
-    return url;
+    return GlobalVar.formatImageUrl(url);
   }
 
   @override
@@ -57,21 +54,29 @@ class _CourseDetail extends State<MycourseScreen> {
     super.dispose();
   }
 
-  void getEnrolledCourse() async {
+  Future<void> getEnrolledCourse() async {
     try {
+      if (mounted) setState(() => isLoading = true);
+      
       pref = await SharedPreferences.getInstance();
       int? id = pref.getInt('userId');
-      if (id == null) return;
+      if (id == null) {
+        if (mounted) setState(() => isLoading = false);
+        return;
+      }
 
       final result = await CourseService.getEnrolledCourse(id);
-      if (!mounted) return;
-
-      setState(() {
-        allCourses = result;
-        filteredCourses = result;
-      });
+      
+      if (mounted) {
+        setState(() {
+          allCourses = result;
+          filteredCourses = result;
+          isLoading = false;
+        });
+      }
     } catch (e) {
       debugPrint("Error fetching courses: $e");
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -86,7 +91,7 @@ class _CourseDetail extends State<MycourseScreen> {
 
     List<Course> newFilteredList = allCourses.where((c) {
       return c.courseName.toLowerCase().contains(query) ||
-          c.codeCourse.toLowerCase().contains(query);
+             c.codeCourse.toLowerCase().contains(query);
     }).toList();
 
     setState(() {
@@ -98,31 +103,30 @@ class _CourseDetail extends State<MycourseScreen> {
     if (progress <= 20) {
       return 'Progressmu baru $progress%, ayo kerjakan lagi!';
     } else if (progress <= 40) {
-      return 'Progressmu baru $progress%, sudah ada progressmu, yuk kerjakan!';
+      return 'Progressmu baru $progress%, yuk ditingkatkan!';
     } else if (progress <= 60) {
-      return 'Progressmu baru $progress%, jangan patah semangat, ayo!';
+      return 'Sudah $progress%, jangan patah semangat, ayo!';
     } else if (progress <= 80) {
-      return 'Progressmu sudah $progress%, lumayan, semangat mengerjakannya!';
+      return 'Sudah $progress%, lumayan, sedikit lagi!';
     } else {
-      return 'Progressmu sudah $progress%, tanggung, ayo kerjakan sedikit lagi, semangat!';
+      return 'Sudah $progress%, tanggung, ayo selesaikan!';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-      },
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Stack(
         children: [
+          // Background Pattern
           Container(
             decoration: const BoxDecoration(
               color: Colors.white,
               image: DecorationImage(
                 image: AssetImage("lib/assets/learnbg.png"),
                 fit: BoxFit.cover,
-                opacity: 0.7
+                opacity: 0.1, // Disesuaikan agar teks lebih terbaca
               ),
             ),
           ),
@@ -134,67 +138,90 @@ class _CourseDetail extends State<MycourseScreen> {
               automaticallyImplyLeading: false,
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(15),
-                  bottomRight: Radius.circular(15),
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
                 ),
               ),
-              title: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 15),
-                      child: Center(child: Text('Enrolled Course', style: TextStyle(fontSize: 24, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),),
+              title: Column(
+                children: [
+                  const Text(
+                    'My Enrolled Courses',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontFamily: 'DIN_Next_Rounded',
                     ),
-                    _buildSearch(),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildSearch(),
+                ],
               ),
             ),
-            body: _listCourse(),
+            body: isLoading 
+                ? const Center(child: CircularProgressIndicator()) 
+                : RefreshIndicator(
+                    onRefresh: getEnrolledCourse,
+                    child: _listCourse(),
+                  ),
           ),
         ],
-      )
+      ),
     );
   }
 
   Widget _buildSearch() {
-    return TextField(
-      controller: _searchController,
-      focusNode: _focusNode,
-      decoration: InputDecoration(
-        hintText: _isFocused ? "" : 'Mau belajar apa hari ini?',
-        hintStyle: const TextStyle(color: Colors.grey, fontFamily: 'DIN_Next_Rounded',),
-        prefixIcon: const Icon(Icons.search, color: Colors.grey),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        filled: true,
-        fillColor: Colors.white,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: TextField(
+        controller: _searchController,
+        focusNode: _focusNode,
+        style: const TextStyle(fontFamily: 'DIN_Next_Rounded'),
+        decoration: InputDecoration(
+          hintText: _isFocused ? "" : 'Cari kursus Anda...',
+          hintStyle: const TextStyle(color: Colors.grey),
+          prefixIcon: const Icon(Icons.search, color: AppColors.primaryColor),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(15),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.white,
+        ),
       ),
     );
   }
 
   Widget _listCourse() {
-    return filteredCourses.isEmpty
-    ? Container(
-        decoration: const BoxDecoration(
-          image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover),
+    if (filteredCourses.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Opacity(
+              opacity: 0.5,
+              child: Image.asset('lib/assets/pictures/background-pattern.png', width: 150),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Kursus tidak ditemukan',
+              style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 16, color: Colors.grey),
+            ),
+          ],
         ),
-        child: const Center(child: Text('Kamu belum terdaftar di course apapun', style: TextStyle(fontFamily: 'DIN_Next_Rounded'))),
-      )
-    : ListView.builder(
+      );
+    }
+    
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 10, bottom: 20),
       itemCount: filteredCourses.length,
-      itemBuilder: (context, count) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 1.0),
-          child: _buildCourseItem(filteredCourses[count]),
-        );
+      itemBuilder: (context, index) {
+        return _buildCourseItem(filteredCourses[index]);
       },
     );
   }
 
   Widget _buildCourseItem(Course course) {
-    // Menentukan sumber gambar (Asset vs Network)
     ImageProvider courseImage;
     String formattedUrl = formatUrl(course.image);
 
@@ -208,58 +235,122 @@ class _CourseDetail extends State<MycourseScreen> {
       courseImage = NetworkImage(defaultImageUrl);
     }
 
-    return GestureDetector(
-      onTap: () async {
-        await pref.setInt('lastestSelectedCourse', course.id);
-        if (!mounted) return;
-        Navigator.push(context, MaterialPageRoute(builder: (context) => CourseInitialScreen(id: course.id)));
-      },
-      child: Card(
-        clipBehavior: Clip.antiAliasWithSaveLayer,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
-        color: AppColors.primaryColor,
-        elevation: 5,
-        margin: const EdgeInsets.all(10),
-        child: Column(
-          children: [
-            // PERBAIKAN TAMPILAN GAMBAR
-            Image(
-              image: courseImage,
-              height: 140, // Sedikit lebih tinggi agar proporsional
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Image.asset(
-                  'lib/assets/pictures/imk-picture.jpg', 
-                  height: 140, 
-                  width: double.infinity, 
-                  fit: BoxFit.cover
-                );
-              },
-            ),
-            ListTile(
-              title: Text(course.codeCourse.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.accentColor, fontFamily: 'DIN_Next_Rounded'),),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(course.courseName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),
-                  Text(course.description ?? "", style: const TextStyle(fontSize: 13, color: Colors.white, fontFamily: 'DIN_Next_Rounded',), maxLines: 2, overflow: TextOverflow.ellipsis,),
-                  const SizedBox(height: 10,),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: LinearProgressIndicator(
-                      backgroundColor: Colors.white24,
-                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.secondaryColor),
-                      value: (course.progress ?? 0) / 100,
-                      minHeight: 10,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Material(
+          color: AppColors.primaryColor,
+          child: InkWell(
+            onTap: () async {
+              await pref.setInt('lastestSelectedCourse', course.id);
+              if (!mounted) return;
+              Navigator.push(
+                context, 
+                MaterialPageRoute(builder: (context) => CourseInitialScreen(id: course.id))
+              );
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
+                  children: [
+                    Image(
+                      image: courseImage,
+                      height: 150,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 150,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                        );
+                      },
                     ),
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          course.codeCourse.toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(15),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        course.courseName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.white,
+                          fontFamily: 'DIN_Next_Rounded',
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        course.description ?? "No description available",
+                        style: const TextStyle(fontSize: 12, color: Colors.white70, fontFamily: 'DIN_Next_Rounded'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 15),
+                      // Progress Bar Section
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Progress', style: TextStyle(color: Colors.white, fontSize: 12)),
+                          Text('${course.progress ?? 0}%', style: const TextStyle(color: AppColors.accentColor, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          backgroundColor: Colors.white12,
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.secondaryColor),
+                          value: (course.progress ?? 0) / 100,
+                          minHeight: 8,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        progressSentence(course.progress ?? 0),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.white60,
+                          fontFamily: 'DIN_Next_Rounded',
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 10,),
-                  Text(progressSentence(course.progress ?? 0), style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.white, fontFamily: 'DIN_Next_Rounded',),),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:app/global_var.dart'; // Gunakan GlobalVar
 import 'package:app/model/chapter_status.dart';
 import 'package:app/model/user_course.dart';
 import 'package:app/utils/colors.dart';
@@ -59,15 +60,17 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
     _tabController = TabController(length: 3, vsync: this);
   }
 
+  // PERBAIKAN: Gunakan GlobalVar, prefix /api, dan timeout lebih lama
   Future<void> _fetchUserCluster() async {
+    final String url = "${GlobalVar.baseUrl}/api/user/adaptive/${widget.user.id}";
     try {
-      final response = await http.get(Uri.parse("http://10.106.207.43:7000/api/user/adaptive/${widget.user.id}"));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) setState(() => userType = data['currentCluster'] ?? "Disruptors");
       }
     } catch (e) {
-      debugPrint("Gagal sinkron cluster: $e");
+      debugPrint("Gagal sinkron cluster di Chapter: $e");
     }
   }
 
@@ -168,8 +171,7 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
     );
   }
 
-  // WIDGET LOCKED TETAP SAMA SEPERTI SEBELUMNYA
-  Widget _lockedContent() => Container(child: const Center(child: Text("Assessment Terkunci!")));
-  Widget _lockedMaterialContent() => Container(child: const Center(child: Text("Material Terkunci!")));
-  Widget _lockedAssignmentContent() => Container(child: const Center(child: Text("Assignment Terkunci!")));
+  Widget _lockedContent() => const Center(child: Text("Assessment Terkunci! Selesaikan Material terlebih dahulu."));
+  Widget _lockedMaterialContent() => const Center(child: Text("Material Terkunci karena hukuman!"));
+  Widget _lockedAssignmentContent() => const Center(child: Text("Assignment Terkunci! Selesaikan Assessment terlebih dahulu."));
 }

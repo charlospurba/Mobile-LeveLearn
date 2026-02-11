@@ -6,27 +6,34 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class TradeService {
-  // Mengambil semua master data trade/shop
+  // Helper internal untuk jalur API
+  static String get _apiPath => "${GlobalVar.baseUrl}/api";
+
   static Future<List<TradeModel>> getAllTrades() async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/trade'));
+      final response = await http.get(
+        Uri.parse('$_apiPath/trade'),
+      ).timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
         final List result = jsonDecode(response.body);
         return result.map((json) => TradeModel.fromJson(json)).toList();
       }
       return [];
     } catch (e) {
+      print("Error getAllTrades: $e");
       throw Exception("Gagal mengambil data trade: $e");
     }
   }
 
-  // Mengambil item khusus untuk Tab Shop (yang memiliki harga poin > 0)
   static Future<List<TradeModel>> getShopItems() async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/trade'));
+      final response = await http.get(
+        Uri.parse('$_apiPath/trade'),
+      ).timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
         final List result = jsonDecode(response.body);
-        // Filter item yang memiliki harga poin (Shop)
         return result
             .map((json) => TradeModel.fromJson(json))
             .where((t) => t.priceInPoints > 0)
@@ -34,11 +41,11 @@ class TradeService {
       }
       return [];
     } catch (e) {
+      print("Error getShopItems: $e");
       throw Exception("Gagal mengambil data shop: $e");
     }
   }
 
-  // Mencatat transaksi penukaran Badge (Avatar/Reward)
   static Future<bool> createUserTrade(int userId, int tradeId) async {
     try {
       Map<String, dynamic> request = {
@@ -46,26 +53,25 @@ class TradeService {
         "tradeId": tradeId
       };
       final response = await http.post(
-        Uri.parse('${GlobalVar.baseUrl}/usertrade'),
+        Uri.parse('$_apiPath/usertrade'),
         headers: {
           'Content-type': 'application/json; charset=utf-8',
           'Accept': 'application/json',
         },
         body: jsonEncode(request),
-      );
+      ).timeout(const Duration(seconds: 10));
 
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      debugPrint("Error createUserTrade: $e");
+      print("Error createUserTrade: $e");
       return false;
     }
   }
 
-  // Memproses pembelian item Marketplace dengan Poin
   static Future<bool> buyShopItem(int userId, int tradeId, int price) async {
     try {
       final response = await http.post(
-        Uri.parse('${GlobalVar.baseUrl}/trade/buy'),
+        Uri.parse('$_apiPath/trade/buy'),
         headers: {
           'Content-type': 'application/json; charset=utf-8',
           'Accept': 'application/json',
@@ -75,18 +81,21 @@ class TradeService {
           "tradeId": tradeId,
           "price": price
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
+      
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      debugPrint("Error buyShopItem: $e");
+      print("Error buyShopItem: $e");
       return false;
     }
   }
 
-  // Mengambil daftar item yang sudah dimiliki oleh user tertentu
   static Future<List<UserTrade>> getUserTrade(int userId) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/usertrade'));
+      final response = await http.get(
+        Uri.parse('$_apiPath/usertrade'),
+      ).timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
         final List result = jsonDecode(response.body);
         List<UserTrade> allUserTrades = result.map((json) => UserTrade.fromJson(json)).toList();
@@ -94,6 +103,7 @@ class TradeService {
       }
       return [];
     } catch (e) {
+      print("Error getUserTrade: $e");
       throw Exception("Error fetching user trades: $e");
     }
   }

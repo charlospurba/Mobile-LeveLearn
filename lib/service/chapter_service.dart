@@ -7,36 +7,57 @@ import '../model/chapter.dart';
 import '../model/learning_material.dart';
 
 class ChapterService {
+  // Helper internal untuk memastikan route diawali /api secara konsisten
+  static String get _apiPath => "${GlobalVar.baseUrl}/api";
 
   static Future<LearningMaterial> getMaterialByChapterId(int id) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/chapter/$id/materials'));
+      final response = await http.get(
+        Uri.parse('$_apiPath/chapter/$id/materials'),
+      ).timeout(const Duration(seconds: 15));
+      
       final body = response.body;
+      
+      // Proteksi jika server mengirim error HTML
+      if (body.startsWith('<!DOCTYPE html>')) {
+        throw Exception("Server Error: Route /api/chapter/$id/materials tidak ditemukan.");
+      }
+      
       final result = jsonDecode(body);
-      LearningMaterial chapter = LearningMaterial(
-                  id: result['id'],
-                  chapterId: result['chapterId'],
-                  name: result['name'],
-                  content: result['content'],
-                  createdAt: DateTime.parse(result['createdAt']),
-                  updatedAt: DateTime.parse(result['updatedAt']),
-          );
-      return chapter;
-    } catch(e){
+      return LearningMaterial(
+        id: result['id'],
+        chapterId: result['chapterId'],
+        name: result['name'],
+        content: result['content'],
+        createdAt: DateTime.parse(result['createdAt']),
+        updatedAt: DateTime.parse(result['updatedAt']),
+      );
+    } catch (e) {
+      print("Error getMaterialByChapterId: $e");
       throw Exception(e.toString());
     }
   }
 
   static Future<Assessment> getAssessmentByChapterId(int id) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/chapter/$id/assessments'));
-      final result = jsonDecode(response.body);
-
-      if (result.isEmpty) {
-        throw Exception("No assessments found");
+      final response = await http.get(
+        Uri.parse('$_apiPath/chapter/$id/assessments'),
+      ).timeout(const Duration(seconds: 20)); // Durasi lebih lama untuk data soal yang besar
+      
+      final body = response.body;
+      if (body.startsWith('<!DOCTYPE html>')) {
+        throw Exception("Server Error: Route /api/chapter/$id/assessments tidak ditemukan.");
       }
 
-      final List<dynamic> decodeQuestion = jsonDecode(result['questions']);
+      final result = jsonDecode(body);
+      if (result == null || (result is List && result.isEmpty)) {
+        throw Exception("No assessments found for this chapter");
+      }
+
+      // Mendukung response jika berbentuk List atau Map langsung
+      final data = (result is List) ? result[0] : result;
+
+      final List<dynamic> decodeQuestion = jsonDecode(data['questions']);
       List<Question> questions = decodeQuestion.map((q) => Question(
         question: q['question'],
         option: List<String>.from(q['options']),
@@ -44,82 +65,89 @@ class ChapterService {
         type: q['type']
       )).toList();
 
-      // Decode answers safely (null-safe handling)
-      final List<String>? decodedAnswers = result['answers'] != null
-          ? List<String>.from(jsonDecode(result['answers']))
+      final List<String>? decodedAnswers = data['answers'] != null
+          ? List<String>.from(jsonDecode(data['answers']))
           : null;
 
-      Assessment assessment = Assessment(
-        id: result['id'],
-        chapterId: result['chapterId'],
-        instruction: result['instruction'],
+      return Assessment(
+        id: data['id'],
+        chapterId: data['chapterId'],
+        instruction: data['instruction'],
         questions: questions,
         answers: decodedAnswers,
-        createdAt: DateTime.parse(result['createdAt']),
-        updatedAt: DateTime.parse(result['updatedAt']),
+        createdAt: DateTime.parse(data['createdAt']),
+        updatedAt: DateTime.parse(data['updatedAt']),
       );
-
-      return assessment;
     } catch (e) {
+      print("Error getAssessmentByChapterId: $e");
       throw Exception("Error fetching assessment: ${e.toString()}");
     }
   }
 
   static Future<Assignment> getAssignmentByChapterId(int id) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/chapter/$id/assignments'));
-      final result = jsonDecode(response.body);
+      final response = await http.get(
+        Uri.parse('$_apiPath/chapter/$id/assignments'),
+      ).timeout(const Duration(seconds: 15));
+      
+      final body = response.body;
+      if (body.startsWith('<!DOCTYPE html>')) {
+        throw Exception("Server Error: Route /api/chapter/$id/assignments tidak ditemukan.");
+      }
 
-      if (result.isEmpty) {
+      final result = jsonDecode(body);
+      if (result == null || (result is List && result.isEmpty)) {
         throw Exception("No assignment found");
       }
 
-      Assignment assignment = Assignment.fromJson(result);
-
-      return assignment;
+      final data = (result is List) ? result[0] : result;
+      return Assignment.fromJson(data);
     } catch (e) {
-      throw Exception("Error fetching assessment: ${e.toString()}");
+      print("Error getAssignmentByChapterId: $e");
+      throw Exception("Error fetching assignment: ${e.toString()}");
     }
   }
 
-  static Future<Chapter> getChapterById(int id) async{
+  static Future<Chapter> getChapterById(int id) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/chapter/$id'));
-      final result = jsonDecode(response.body);
-
-      if (result.isEmpty) {
-        throw Exception("No Chapter found");
+      final response = await http.get(
+        Uri.parse('$_apiPath/chapter/$id'),
+      ).timeout(const Duration(seconds: 10));
+      
+      final body = response.body;
+      if (body.startsWith('<!DOCTYPE html>')) {
+        throw Exception("Server Error: Route /api/chapter/$id tidak ditemukan.");
       }
 
-      Chapter chapter = Chapter.fromJson(result);
-
-      return chapter;
+      final result = jsonDecode(body);
+      return Chapter.fromJson(result);
     } catch (e) {
-      throw Exception("Error fetching assessment: ${e.toString()}");
+      print("Error getChapterById: $e");
+      throw Exception("Error fetching chapter: ${e.toString()}");
     }
   }
 
-  static Future<double> checkSimiliarity (String reference, String answer) async {
+  static Future<double> checkSimiliarity(String reference, String answer) async {
     Map<String, dynamic> request = {
       'reference': reference,
       'essay': answer
     };
     try {
-      final response = await http.post(Uri.parse(GlobalVar.similiarityEssayUrl), headers: {
-        'Content-type' : 'application/json',
-        'Accept': 'application/json',
-      } , body: jsonEncode(request));
+      // Menggunakan URL khusus AI Flask (Port 8081)
+      final response = await http.post(
+        Uri.parse(GlobalVar.similiarityEssayUrl), 
+        headers: {
+          'Content-type': 'application/json',
+          'Accept': 'application/json',
+        }, 
+        body: jsonEncode(request)
+      ).timeout(const Duration(seconds: 45)); // AI butuh waktu lebih lama untuk memproses
+      
       final result = jsonDecode(response.body);
-
-      if (result.isEmpty) {
-        throw Exception("No Chapter found");
-      }
-
-      double similiarity = result['similarity_score'];
-
-      return similiarity;
+      return (result['similarity_score'] as num).toDouble();
     } catch (e) {
-      throw Exception("Error get Response Essay Similiarity: ${e.toString()}");
+      print("Error checkSimiliarity: $e");
+      throw Exception("Error get Response Essay Similarity: ${e.toString()}");
     }
   }
 }

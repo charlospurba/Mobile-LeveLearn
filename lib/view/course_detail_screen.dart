@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 
 import 'package:app/global_var.dart';
 import 'package:app/model/chapter.dart';
-import 'package:app/model/chapter_status.dart';
+import 'package:app/model/user_badge.dart'; // Digunakan di listBadge
 import 'package:app/service/badge_service.dart';
 import 'package:app/service/course_service.dart';
 import 'package:app/service/user_chapter_service.dart';
@@ -44,47 +44,57 @@ class _CourseDetail extends State<CourseDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _initialLoad(); // Gunakan initState untuk load pertama kali
+    _initialLoad();
   }
 
-  // Fungsi sentral untuk memuat data (Refreshable)
   Future<void> _initialLoad() async {
-    if (mounted) setState(() => isLoading = true);
+    if (!mounted) return;
+    setState(() => isLoading = true);
     
-    pref = await SharedPreferences.getInstance();
-    idCourse = pref.getInt('lastestSelectedCourse') ?? 0;
-    idUser = pref.getInt('userId') ?? 0;
+    try {
+      pref = await SharedPreferences.getInstance();
+      idCourse = widget.id != 0 ? widget.id : (pref.getInt('lastestSelectedCourse') ?? 0);
+      idUser = pref.getInt('userId') ?? 0;
 
-    if (idUser != 0) {
-      // Load user dan profile adaptive
-      final fetchedUser = await UserService.getUserById(idUser);
-      if (fetchedUser != null) {
+      if (idUser != 0) {
+        final fetchedUser = await UserService.getUserById(idUser);
         user = fetchedUser;
         await fetchAdaptiveProfile(idUser);
-      }
 
-      if (idCourse != 0) {
-        // Load detail kursus dan progress user (UserCourse)
-        courseDetail = await CourseService.getCourse(idCourse);
-        uc = await UserCourseService.getUserCourse(idUser, idCourse);
-        await getListBadge(idCourse);
-        
-        // Ambil daftar chapter beserta statusnya (assessmentDone, dll)
-        final result = await CourseService.getChapterByCourse(idCourse);
-        listChapter = await getStatusChapter(result);
+        if (idCourse != 0) {
+          final results = await Future.wait([
+            CourseService.getCourse(idCourse),
+            UserCourseService.getUserCourse(idUser, idCourse),
+            BadgeService.getBadgeListCourseByCourseId(idCourse),
+            CourseService.getChapterByCourse(idCourse),
+          ]);
+
+          courseDetail = results[0] as Course?;
+          uc = results[1] as UserCourse?;
+          listBadge = results[2] as List<BadgeModel>?;
+          
+          final chapters = results[3] as List<Chapter>;
+          listChapter = await getStatusChapter(chapters);
+        }
       }
+    } catch (e) {
+      debugPrint("Error loading course details: $e");
+    } finally {
+      if (mounted) setState(() => isLoading = false);
     }
-
-    if (mounted) setState(() => isLoading = false);
   }
 
   Future<void> fetchAdaptiveProfile(int id) async {
-    final String url = "http://10.106.207.43:7000/api/user/adaptive/$id";
+    final String url = "${GlobalVar.baseUrl}/api/user/adaptive/$id";
     try {
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        userType = data['currentCluster'] ?? "Disruptors";
+        if (mounted) {
+          setState(() {
+            userType = data['currentCluster'] ?? "Disruptors";
+          });
+        }
       }
     } catch (e) {
       debugPrint("Gagal sinkron cluster: $e");
@@ -92,13 +102,15 @@ class _CourseDetail extends State<CourseDetailScreen> {
   }
 
   Future<List<Chapter>> getStatusChapter(List<Chapter> list) async {
-    for (var chapter in list) {
+    await Future.wait(list.map((chapter) async {
       chapter.status = await UserChapterService.getChapterStatus(idUser, chapter.id);
-    }
+    }));
+    list.sort((a, b) => a.level.compareTo(b.level));
     return list;
   }
 
-  Future<void> updateStatus(index) async {
+  Future<void> updateStatus(int index) async {
+    if (listChapter[index].status == null) return;
     final result = await UserChapterService.updateChapterStatus(
         listChapter[index].status!.id, listChapter[index].status!);
     if (mounted) {
@@ -114,27 +126,16 @@ class _CourseDetail extends State<CourseDetailScreen> {
     }
   }
 
-  Future<void> getListBadge(int courseId) async {
-    listBadge = await BadgeService.getBadgeListCourseByCourseId(courseId);
-  }
-
   int idOfBadge(int isCheckpoint) {
-    int idbadge = 0;
     if (listBadge == null) return 0;
-    switch (isCheckpoint) {
-      case 1:
-        for (var i in listBadge!) { if (i.type == 'BEGINNER') idbadge = i.id; }
-        break;
-      case 2:
-        for (var i in listBadge!) { if (i.type == 'INTERMEDIATE') idbadge = i.id; }
-        break;
-      case 3:
-        for (var i in listBadge!) { if (i.type == 'ADVANCE') idbadge = i.id; }
-        break;
-      default:
-        idbadge = 0;
+    try {
+      if (isCheckpoint == 1) return listBadge!.firstWhere((i) => i.type == 'BEGINNER').id;
+      if (isCheckpoint == 2) return listBadge!.firstWhere((i) => i.type == 'INTERMEDIATE').id;
+      if (isCheckpoint == 3) return listBadge!.firstWhere((i) => i.type == 'ADVANCE').id;
+    } catch (_) {
+      return 0;
     }
-    return idbadge;
+    return 0;
   }
 
   @override
@@ -142,13 +143,14 @@ class _CourseDetail extends State<CourseDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: RefreshIndicator(
-        onRefresh: _initialLoad, // Memungkinkan user swipe down untuk refresh
+        color: AppColors.primaryColor,
+        onRefresh: _initialLoad,
         child: Stack(
           children: [
             Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 image: DecorationImage(
-                  image: AssetImage("lib/assets/learnbg.png"),
+                  image: const AssetImage("lib/assets/learnbg.png"),
                   fit: BoxFit.cover,
                   opacity: 0.1,
                 ),
@@ -157,100 +159,10 @@ class _CourseDetail extends State<CourseDetailScreen> {
             CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               slivers: [
-                SliverAppBar(
-                  expandedHeight: 180.0,
-                  pinned: true,
-                  elevation: 0,
-                  backgroundColor: const Color(0xFF441F7F),
-                  automaticallyImplyLeading: false,
-                  flexibleSpace: FlexibleSpaceBar(
-                    background: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.asset("lib/assets/gamification.jpeg", fit: BoxFit.cover),
-                        Container(color: const Color(0xFF441F7F).withOpacity(0.6)),
-                        SafeArea(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(height: 20),
-                              const Text('COURSE PROGRESS',
-                                  style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold, fontSize: 22, color: Colors.white, letterSpacing: 1.2)),
-                              const SizedBox(height: 5),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 30),
-                                child: Text(courseDetail?.courseName ?? "Loading...",
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 14, color: Colors.white70),
-                                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  title: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: const Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                      Image.asset("lib/assets/LeveLearn.png", width: 100),
-                      const SizedBox(width: 40),
-                    ],
-                  ),
-                ),
+                _buildSliverAppBar(),
                 isLoading
                     ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
-                    : SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 30, 20, 40),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, count) {
-                              return TweenAnimationBuilder<double>(
-                                duration: Duration(milliseconds: 500 + (count * 100)),
-                                tween: Tween<double>(begin: 0.0, end: 1.0),
-                                curve: Curves.easeOut,
-                                builder: (context, value, child) {
-                                  return Opacity(
-                                    opacity: value,
-                                    child: Transform.translate(
-                                      offset: Offset(0, 30 * (1 - value)),
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: Stack(
-                                  alignment: Alignment.topCenter,
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    if (count < listChapter.length - 1)
-                                      Positioned(
-                                        left: 0, right: 0, bottom: -50, top: 80,
-                                        child: Center(
-                                          child: Container(
-                                            width: 4,
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFD1C4E9),
-                                              borderRadius: BorderRadius.circular(2),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    Padding(
-                                      padding: const EdgeInsets.only(bottom: 24.0),
-                                      child: _decideChapterItem(count),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                            childCount: listChapter.length,
-                          ),
-                        ),
-                      ),
+                    : _buildChapterList(),
               ],
             ),
           ],
@@ -259,8 +171,109 @@ class _CourseDetail extends State<CourseDetailScreen> {
     );
   }
 
+  Widget _buildSliverAppBar() {
+    return SliverAppBar(
+      expandedHeight: 180.0,
+      pinned: true,
+      elevation: 0,
+      backgroundColor: const Color(0xFF441F7F),
+      automaticallyImplyLeading: false,
+      flexibleSpace: FlexibleSpaceBar(
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.asset("lib/assets/gamification.jpeg", fit: BoxFit.cover),
+            Container(color: const Color(0xFF441F7F).withValues(alpha: 0.6)),
+            SafeArea(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 20),
+                  const Text('COURSE PROGRESS',
+                      style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold, fontSize: 22, color: Colors.white, letterSpacing: 1.2)),
+                  const SizedBox(height: 5),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 30),
+                    child: Text(courseDetail?.courseName ?? "Loading...",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 14, color: Colors.white70),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: const Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          Image.asset("lib/assets/LeveLearn.png", width: 100),
+          const SizedBox(width: 40),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChapterList() {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(20, 30, 20, 40),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, count) => _buildAnimatedChapterItem(count),
+          childCount: listChapter.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedChapterItem(int count) {
+    return TweenAnimationBuilder<double>(
+      duration: Duration(milliseconds: 400 + (count * 50)),
+      tween: Tween<double>(begin: 0.0, end: 1.0),
+      curve: Curves.easeOut,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Stack(
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.none,
+        children: [
+          if (count < listChapter.length - 1)
+            Positioned(
+              left: 0, right: 0, bottom: -50, top: 80,
+              child: Center(
+                child: Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1C4E9),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24.0),
+            child: _decideChapterItem(count),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _decideChapterItem(int index) {
     if (uc == null) return const SizedBox();
+    
     if (userType == "Free Spirits" || userType == "Players" || userType == "Achievers") {
       return _buildCourseItem(index);
     }
@@ -269,14 +282,12 @@ class _CourseDetail extends State<CourseDetailScreen> {
     bool isStrictlyBlocked = false;
     String blockMessage = "Selesaikan level sebelumnya!";
 
-    if (userType == "Disruptors") {
-      if (index > 0) {
-        final prevChapterStatus = listChapter[index - 1].status;
-        if (prevChapterStatus != null) {
-          if (!prevChapterStatus.materialDone || !prevChapterStatus.assessmentDone) {
-            isStrictlyBlocked = true;
-            blockMessage = "CHAPTER TERKUNCI: Selesaikan Materi & Kuis level $index!";
-          }
+    if (userType == "Disruptors" && index > 0) {
+      final prevChapterStatus = listChapter[index - 1].status;
+      if (prevChapterStatus != null) {
+        if (!prevChapterStatus.materialDone || !prevChapterStatus.assessmentDone) {
+          isStrictlyBlocked = true;
+          blockMessage = "LEVEL TERKUNCI: Selesaikan level $index!";
         }
       }
     }
@@ -292,10 +303,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
     final chapter = listChapter[index];
     final isCurrent = uc != null && index == uc!.currentChapter - 1;
 
-    String displayTitle = (userType == "Players" || userType == "Achievers") 
-        ? "Level ${chapter.level} - ${chapter.name}" 
-        : chapter.name;
-
     return Center(
       child: Stack(
         clipBehavior: Clip.none,
@@ -305,7 +312,13 @@ class _CourseDetail extends State<CourseDetailScreen> {
             margin: const EdgeInsets.only(top: 30),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: const Color(0xFF4A148C).withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))],
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF4A148C).withValues(alpha: 0.2), 
+                  blurRadius: 10, 
+                  offset: const Offset(0, 5)
+                )
+              ],
             ),
             child: Material(
               color: Colors.transparent,
@@ -313,18 +326,10 @@ class _CourseDetail extends State<CourseDetailScreen> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(24),
                 onTap: () async {
-                  // Logic Update Lokal sebelum pindah
-                  if (uc != null) {
-                    uc!.currentChapter = uc!.currentChapter < chapter.level ? chapter.level : uc!.currentChapter;
-                    updateUserCourse();
-                  }
-                  if (chapter.status != null && !chapter.status!.isStarted) {
-                    chapter.status!.timeStarted = DateTime.now();
-                    chapter.status!.isStarted = true;
-                  }
                   await updateStatus(index);
+                  
+                  if (!mounted) return;
 
-                  // BAGIAN KRUSIAL: Menunggu user kembali dari ChapterScreen
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -334,22 +339,25 @@ class _CourseDetail extends State<CourseDetailScreen> {
                         uc: uc!,
                         chLength: listChapter.length,
                         user: user!,
-                        chapterName: listChapter[index].name,
-                        idBadge: idOfBadge(listChapter[index].isCheckpoint),
-                        level: listChapter[index].level,
+                        chapterName: chapter.name,
+                        idBadge: idOfBadge(chapter.isCheckpoint),
+                        level: chapter.level,
                       ),
                     ),
                   );
 
-                  // SETELAH KEMBALI: Panggil initialLoad untuk refresh semua status dari database
-                  _initialLoad();
+                  if (mounted) _initialLoad();
                 },
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
-                      gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF5E2B99), Color(0xFF441F7F)]),
-                      border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5)),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft, 
+                        end: Alignment.bottomRight, 
+                        colors: [Color(0xFF5E2B99), Color(0xFF441F7F)]
+                      ),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5)),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 50, 20, 24),
                     child: Column(
@@ -365,7 +373,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        Text(displayTitle, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white, fontFamily: 'DIN_Next_Rounded')),
+                        Text(chapter.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white, fontFamily: 'DIN_Next_Rounded')),
                       ],
                     ),
                   ),
@@ -375,19 +383,26 @@ class _CourseDetail extends State<CourseDetailScreen> {
           ),
           Positioned(
             top: 0,
-            child: Container(
-              width: 60, height: 60,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(colors: isCurrent ? [const Color(0xFF00E676), const Color(0xFF00C853)] : [Colors.grey.shade400, Colors.grey.shade600]),
-                border: Border.all(color: Colors.white, width: 3),
-              ),
-              child: Center(child: Text("${chapter.level}", style: const TextStyle(fontFamily: 'Modak', fontSize: 24, color: Colors.white))),
-            ),
+            child: _buildLevelCircle(chapter.level, isCurrent),
           ),
-          if (isCurrent) Positioned(right: 0, bottom: 10, child: Image.asset('lib/assets/rocket.png', width: 60, height: 60)),
+          if (isCurrent) 
+            Positioned(right: -10, bottom: 10, child: Image.asset('lib/assets/rocket.png', width: 60, height: 60)),
         ],
       ),
+    );
+  }
+
+  Widget _buildLevelCircle(int level, bool isCurrent) {
+    return Container(
+      width: 60, height: 60,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: isCurrent ? [const Color(0xFF00E676), const Color(0xFF00C853)] : [Colors.grey.shade400, Colors.grey.shade600]
+        ),
+        border: Border.all(color: Colors.white, width: 3),
+      ),
+      child: Center(child: Text("$level", style: const TextStyle(fontFamily: 'Modak', fontSize: 24, color: Colors.white))),
     );
   }
 
@@ -400,40 +415,35 @@ class _CourseDetail extends State<CourseDetailScreen> {
         children: [
           Container(
             width: double.infinity,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), color: const Color(0xFFF3F4F6), border: Border.all(color: Colors.grey.shade300)),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24), 
+              color: const Color(0xFFF3F4F6), 
+              border: Border.all(color: Colors.grey.shade300)
+            ),
             child: Padding(
               padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 20),
               child: Column(
                 children: [
                   Icon(Icons.lock_rounded, size: 40, color: Colors.grey.shade300),
                   const SizedBox(height: 12),
-                  Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: userType == "Disruptors" && message.contains("TERKUNCI") ? Colors.red : Colors.grey, fontWeight: FontWeight.bold)),
+                  Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
           ),
-          Positioned(top: -40, left: 0, right: 0, child: Center(child: _buildLevelBadge(chapter.level, false))),
+          Positioned(top: -30, left: 0, right: 0, child: Center(child: _buildLevelCircle(chapter.level, false))),
         ],
       ),
-    );
-  }
-
-  Widget _buildLevelBadge(int level, bool unlocked) {
-    return Container(
-      width: 80, height: 80,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(colors: unlocked ? [const Color(0xFF4ADE80), const Color(0xFF16A34A)] : [Colors.grey.shade400, Colors.grey.shade600]),
-        border: Border.all(color: Colors.white, width: 3),
-      ),
-      child: Center(child: Text('$level', style: const TextStyle(fontSize: 32, color: Colors.white, fontFamily: 'Modak'))),
     );
   }
 
   Widget _buildStatusIcon(bool isDone, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(color: isDone ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.1), shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: isDone ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1), 
+        shape: BoxShape.circle
+      ),
       child: Icon(icon, size: 18, color: isDone ? const Color(0xFFFFD700) : Colors.white24),
     );
   }

@@ -1,34 +1,36 @@
 import 'dart:convert';
 import 'package:app/model/chapter.dart';
 import 'package:http/http.dart' as http;
-
 import '../global_var.dart';
 import '../model/course.dart';
 
 class CourseService {
+  // Helper internal untuk jalur API
+  static String get _apiPath => "${GlobalVar.baseUrl}/api";
+
   static Future<List<Course>> getEnrolledCourse(int id) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/user/$id/courses'));
-      final body = response.body;
-      final result = jsonDecode(body);
-      List<Course> courses = List<Course>.from(
-        result.map(
-              (result) => Course.fromJson(result)
-        ),
-      );
-      return courses;
+      // PERBAIKAN: Tambahkan /api melalui _apiPath
+      final response = await http.get(Uri.parse('$_apiPath/user/$id/courses'))
+          .timeout(const Duration(seconds: 10));
+          
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        return List<Course>.from(result.map((item) => Course.fromJson(item)));
+      } else {
+        throw Exception("Server Error: ${response.statusCode}");
+      }
     } catch(e){
-      throw Exception(e.toString());
+      throw Exception("Gagal memuat kursus: $e");
     }
   }
 
   static Future<Course> getCourse(int id) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/course/$id'));
+      final response = await http.get(Uri.parse('$_apiPath/course/$id'))
+          .timeout(const Duration(seconds: 10));
       final result = jsonDecode(response.body);
       
-      // PERBAIKAN: Gunakan fromJson agar data progress dan struktur JSON konsisten
-      // Jika backend mengembalikan object course langsung tanpa pembungkus 'course':
       return Course(
         id: result['id'],
         courseName: result['name'],
@@ -37,27 +39,25 @@ class CourseService {
         image: result['image'] ?? '',
         createdAt: DateTime.parse(result['createdAt']),
         updatedAt: DateTime.parse(result['updatedAt']),
-        progress: result['progress'] ?? 0, // Ambil progres asli, jangan dipaksa 0
+        progress: result['progress'] ?? 0,
       );
     } catch(e){
-      throw Exception(e.toString());
+      throw Exception("Gagal memuat detail kursus: $e");
     }
   }
 
   static Future<List<Chapter>> getChapterByCourse(int id) async {
     try {
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/course/$id/chapters'));
-      final body = response.body;
-      final result = jsonDecode(body);
+      final response = await http.get(Uri.parse('$_apiPath/course/$id/chapters'))
+          .timeout(const Duration(seconds: 10));
       
-      List<Chapter> chapter = List<Chapter>.from(
-        result.map(
-            (item) => Chapter.fromJson(item)
-        )
-      );
-      return chapter;
+      if (response.statusCode == 200) {
+        final List result = jsonDecode(response.body);
+        return result.map((item) => Chapter.fromJson(item)).toList();
+      }
+      return [];
     } catch(e){
-      throw Exception(e.toString());
+      throw Exception("Gagal memuat chapter: $e");
     }
   }
 }

@@ -1,24 +1,41 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
 import '../global_var.dart';
 import '../model/user_course.dart';
 
 class UserCourseService {
+  // Helper internal untuk memastikan route diawali /api secara konsisten
+  static String get _apiPath => "${GlobalVar.baseUrl}/api";
 
-  static Future<UserCourse> getUserCourse(int idUser, int idCourse) async {
+  static Future<UserCourse?> getUserCourse(int idUser, int idCourse) async {
     try {
-      late UserCourse status;
-      final response = await http.get(Uri.parse('${GlobalVar.baseUrl}/usercourse/$idUser/$idCourse'));
+      // PERBAIKAN: Tambahkan /api lewat _apiPath
+      final response = await http.get(
+        Uri.parse('$_apiPath/usercourse/$idUser/$idCourse'),
+      ).timeout(const Duration(seconds: 10));
+
       final body = response.body;
-      final result = jsonDecode(body);
-      print(result);
-      if (result is List && result.isNotEmpty) {
-        status = UserCourse.fromJson(result[0]);
+      
+      // Cek jika response bukan JSON (biasanya HTML error)
+      if (body.startsWith('<!DOCTYPE html>')) {
+        print("Error: Server mengembalikan HTML. Cek route /api/usercourse di backend.");
+        return null;
       }
-      return status;
-    } catch(e){
-      throw Exception(e.toString());
+
+      final result = jsonDecode(body);
+      print("DEBUG USERCOURSE: $result");
+
+      if (result is List && result.isNotEmpty) {
+        return UserCourse.fromJson(result[0]);
+      } else if (result is Map<String, dynamic>) {
+        return UserCourse.fromJson(result);
+      }
+      
+      return null;
+    } catch (e) {
+      print("Error getUserCourse: $e");
+      // Mengembalikan null agar aplikasi tidak langsung force close/crash
+      return null; 
     }
   }
 
@@ -32,16 +49,24 @@ class UserCourseService {
         "isCompleted": uc.isCompleted,
         "enrolledAt": uc.enrolledAt.toIso8601String()
       };
-      final responsePut = await http.put(Uri.parse('${GlobalVar.baseUrl}/usercourse/$id'), headers: {
-        'Content-type' : 'application/json; charset=utf-8',
-        'Accept': 'application/json',
-      }, body: jsonEncode(request));
+
+      // PERBAIKAN: Tambahkan /api lewat _apiPath
+      final responsePut = await http.put(
+        Uri.parse('$_apiPath/usercourse/$id'), 
+        headers: {
+          'Content-type' : 'application/json; charset=utf-8',
+          'Accept': 'application/json',
+        }, 
+        body: jsonEncode(request)
+      ).timeout(const Duration(seconds: 10));
 
       if (responsePut.statusCode == 200) {
-        print("Update Successful");
+        print("Update UserCourse Successful");
+      } else {
+        print("Update Failed: ${responsePut.body}");
       }
-    } catch(e){
-      throw Exception(e.toString());
+    } catch (e) {
+      print("Error updateUserCourse: $e");
     }
   }
 }

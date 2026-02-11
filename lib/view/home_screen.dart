@@ -7,7 +7,7 @@ import 'package:app/model/user_challenge.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:app/global_var.dart'; // Import GlobalVar untuk fungsi formatUrl
+import 'package:app/global_var.dart';
 
 import '../model/course.dart';
 import '../model/user_badge.dart';
@@ -15,7 +15,6 @@ import '../service/badge_service.dart';
 import '../service/course_service.dart';
 import '../service/user_service.dart';
 import '../service/activity_service.dart'; 
-import '../utils/colors.dart';
 import 'login_screen.dart';
 
 import 'package:app/view/gamification/badge_stat.dart';
@@ -50,22 +49,10 @@ class _HomeState extends State<Homescreen> {
   int streakDays = 0;
   String userType = "Disruptors";
 
-  final String apiBaseUrl = "http://10.106.207.43:7000/api";
-  final String serverIp = "10.106.207.43"; // IP Laptop Anda
-
   @override
   void initState() {
     super.initState();
     _initialLoad(); 
-  }
-
-  // FUNGSI HELPER UNTUK FIX GAMBAR
-  String formatUrl(String? url) {
-    if (url == null || url.isEmpty) return "";
-    if (url.startsWith('lib/assets/')) return url;
-    if (url.contains('localhost')) return url.replaceAll('localhost', serverIp);
-    if (!url.startsWith('http')) return 'http://$serverIp:7000$url';
-    return url;
   }
 
   Future<void> _initialLoad() async {
@@ -73,18 +60,24 @@ class _HomeState extends State<Homescreen> {
     setState(() => isLoading = true);
 
     try {
+      // 1. Ambil data User dari SP & Backend terlebih dahulu (Krusial)
       await getUserFromSharedPreference();
       
       if (idUser != 0) {
-        await fetchAdaptiveProfile();
-
-        await Future.wait<dynamic>([
+        // 2. Jalankan Cluster AI dan Data lainnya secara PARALEL
+        // Data krusial (Course/User) tidak menunggu Cluster AI yang lama
+        await Future.wait([
+          fetchAdaptiveProfile(), // AI Profile
           handleStreakInteraction(),
           getAllUser(),
           getEnrolledCourse(),
           fetchChallenges(),
-        ]);
+        ]).catchError((err) {
+          debugPrint("Beberapa data gagal dimuat, tapi tetap lanjut: $err");
+          return [];
+        });
 
+        // 3. Catat log akses di background (tidak perlu await)
         ActivityService.sendLog(
           userId: idUser, 
           type: 'FREQUENT_ACCESS', 
@@ -92,16 +85,19 @@ class _HomeState extends State<Homescreen> {
         );
       }
     } catch (e) {
-      debugPrint("Error loading home data: $e");
+      debugPrint("Error fatal di Homescreen: $e");
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
   }
 
   Future<void> fetchAdaptiveProfile() async {
-    final String url = "$apiBaseUrl/user/adaptive/$idUser";
+    // URL mengarah ke Node.js API
+    final String url = "${GlobalVar.baseUrl}/api/user/adaptive/$idUser";
     try {
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 12));
+      // NAIKKAN TIMEOUT: AI GMM butuh waktu lebih lama (30 detik)
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
+      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
@@ -111,9 +107,12 @@ class _HomeState extends State<Homescreen> {
         }
       }
     } catch (e) {
-      debugPrint("Adaptive Fetch Failed: $e");
+      // Jika AI GMM gagal/timeout, jangan buat aplikasi stuck
+      debugPrint("Adaptive AI Fetch Gagal/Timeout: $e");
     }
   }
+
+  // --- REUSABLE SERVICES ---
 
   Future<void> fetchChallenges() async {
     if (idUser == 0) return;
@@ -139,6 +138,7 @@ class _HomeState extends State<Homescreen> {
       allCourses = result;
       pref = await SharedPreferences.getInstance();
       final lastId = pref.getInt('lastestSelectedCourse');
+      
       Course? foundCourse;
       if (lastId != null) {
         for (var c in allCourses) { if (c.id == lastId) { foundCourse = c; break; } }
@@ -147,8 +147,14 @@ class _HomeState extends State<Homescreen> {
         foundCourse = allCourses.first;
         await pref.setInt('lastestSelectedCourse', foundCourse.id);
       }
+
       final badgeResult = await BadgeService.getUserBadgeListByUserId(idUser);
-      if (mounted) setState(() { lastestCourse = foundCourse; userBadges = badgeResult.where((b) => !b.isPurchased).toList(); });
+      if (mounted) {
+        setState(() { 
+          lastestCourse = foundCourse; 
+          userBadges = badgeResult.where((b) => !b.isPurchased).toList(); 
+        });
+      }
     } catch (e) { debugPrint("Course error: $e"); }
   }
 
@@ -189,6 +195,7 @@ class _HomeState extends State<Homescreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Cluster UI Config
     Color clusterColor = Colors.redAccent; 
     IconData clusterIcon = Icons.bolt;
 
@@ -205,7 +212,13 @@ class _HomeState extends State<Homescreen> {
         children: [
           _buildBackgroundVector(),
           Container(
-            decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover, opacity: 0.1)),
+            decoration: const BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage('lib/assets/pictures/background-pattern.png'), 
+                fit: BoxFit.cover, 
+                opacity: 0.1
+              )
+            ),
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
@@ -247,6 +260,8 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
+  // --- UI WIDGETS ---
+
   Widget _buildProfileHeader(Color clusterColor, IconData clusterIcon) {
     String? img = user?.image;
     return Padding(
@@ -258,8 +273,8 @@ class _HomeState extends State<Homescreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Hello! Happy Learning', style: TextStyle(color: AppColors.primaryColor, fontSize: 14, fontFamily: 'DIN_Next_Rounded')),
-                Text(name, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded')),
+                const Text('Hello! Happy Learning', style: TextStyle(color: GlobalVar.primaryColor, fontSize: 14, fontFamily: 'DIN_Next_Rounded')),
+                Text(name, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: GlobalVar.primaryColor, fontFamily: 'DIN_Next_Rounded')),
                 const SizedBox(height: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -291,13 +306,12 @@ class _HomeState extends State<Homescreen> {
               child: CircleAvatar(
                 radius: 30, 
                 backgroundColor: Colors.grey[200], 
-                // LOGIKA PERBAIKAN GAMBAR PROFILE
-                backgroundImage: img != null && img != "" 
+                backgroundImage: img != null && img.isNotEmpty 
                   ? (img.startsWith('lib/assets/') 
                       ? AssetImage(img) as ImageProvider
-                      : NetworkImage(formatUrl(img))) 
+                      : NetworkImage(GlobalVar.formatImageUrl(img))) 
                   : null, 
-                child: img == null || img == "" ? const Icon(Icons.person, size: 30) : null
+                child: (img == null || img.isEmpty) ? const Icon(Icons.person, size: 30) : null
               ),
             ),
           ),
@@ -346,7 +360,9 @@ class _HomeState extends State<Homescreen> {
           borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.all(20), 
-            decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover)), 
+            decoration: const BoxDecoration(
+              image: DecorationImage(image: AssetImage('lib/assets/pictures/dashboard.png'), fit: BoxFit.cover)
+            ), 
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start, 
               children: [ 
@@ -357,10 +373,8 @@ class _HomeState extends State<Homescreen> {
                       BadgeStat(count: userBadges?.length ?? 0),
                       const SizedBox(width: 24),
                     ],
-                    if (userType == "Achievers" || userType == "Free Spirits" || userType == "Disruptors" || userType == "Players") ...[
-                      CourseStat(count: allCourses.length),
-                      const SizedBox(width: 24),
-                    ],
+                    CourseStat(count: allCourses.length),
+                    const SizedBox(width: 24),
                     if (userType != "Free Spirits") ...[
                       RankStat(rank: rank, total: list.length),
                       const SizedBox(width: 24),
@@ -384,26 +398,41 @@ class _HomeState extends State<Homescreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start, 
       children: [ 
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10), child: Text('Explore Courses', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primaryColor, fontFamily: 'DIN_Next_Rounded'))), 
-        allCourses.isEmpty ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet."))) 
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10), 
+          child: Text('Explore Courses', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: GlobalVar.primaryColor, fontFamily: 'DIN_Next_Rounded'))
+        ), 
+        allCourses.isEmpty 
+        ? const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No courses joined yet."))) 
         : CarouselSlider.builder(
             itemCount: allCourses.length, 
-            options: CarouselOptions(height: 190, viewportFraction: allCourses.length == 1 ? 0.9 : 0.75, enlargeCenterPage: true, enableInfiniteScroll: allCourses.length > 1, autoPlay: allCourses.length > 1), 
+            options: CarouselOptions(
+              height: 190, 
+              viewportFraction: allCourses.length == 1 ? 0.9 : 0.75, 
+              enlargeCenterPage: true, 
+              enableInfiniteScroll: allCourses.length > 1, 
+              autoPlay: allCourses.length > 1
+            ), 
             itemBuilder: (context, index, realIndex) { 
               final course = allCourses[index]; 
               return GestureDetector(
-                onTap: () { pref.setInt('lastestSelectedCourse', course.id); setState(() { lastestCourse = course; }); widget.updateIndex(2); }, 
+                onTap: () async { 
+                  await pref.setInt('lastestSelectedCourse', course.id); 
+                  if (mounted) {
+                    setState(() { lastestCourse = course; }); 
+                    widget.updateIndex(2); 
+                  }
+                }, 
                 child: Container(
                   margin: const EdgeInsets.symmetric(vertical: 5), 
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20), 
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4))],
-                    // LOGIKA PERBAIKAN GAMBAR COURSE
                     image: DecorationImage(
-                      image: course.image != "" 
+                      image: course.image.isNotEmpty 
                         ? (course.image.startsWith('lib/assets/') 
                             ? AssetImage(course.image) as ImageProvider
-                            : NetworkImage(formatUrl(course.image)))
+                            : NetworkImage(GlobalVar.formatImageUrl(course.image)))
                         : const AssetImage('lib/assets/pictures/imk-picture.jpg'), 
                       fit: BoxFit.cover
                     )
@@ -411,7 +440,14 @@ class _HomeState extends State<Homescreen> {
                   child: Container(
                     alignment: Alignment.bottomLeft, 
                     padding: const EdgeInsets.all(15), 
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.8)])), 
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20), 
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter, 
+                        end: Alignment.bottomCenter, 
+                        colors: [Colors.transparent, Colors.black.withOpacity(0.8)]
+                      )
+                    ), 
                     child: Text(course.courseName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'))
                   )
                 )
@@ -422,5 +458,14 @@ class _HomeState extends State<Homescreen> {
     ); 
   }
 
-  Widget _buildBackgroundVector() { return Positioned(bottom: -20, right: -20, child: Opacity(opacity: 0.15, child: Image.asset("lib/assets/vectors/learn.png", width: 220, height: 220))); }
+  Widget _buildBackgroundVector() { 
+    return Positioned(
+      bottom: -20, 
+      right: -20, 
+      child: Opacity(
+        opacity: 0.15, 
+        child: Image.asset("lib/assets/vectors/learn.png", width: 220, height: 220)
+      )
+    ); 
+  }
 }
