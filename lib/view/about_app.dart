@@ -13,7 +13,6 @@ class AboutAppScreen extends StatefulWidget {
 }
 
 class _AboutAppScreenState extends State<AboutAppScreen> {
-  // Fungsi untuk membuka link eksternal (GitHub)
   void _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -39,7 +38,6 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
-            // --- HEADER: SLIVER APP BAR ---
             SliverAppBar(
               expandedHeight: 240.0,
               floating: false,
@@ -86,12 +84,10 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
               ),
             ),
 
-            // --- CONTENT: LIST INFO ---
             SliverList(
               delegate: SliverChildListDelegate([
                 const SizedBox(height: 20),
 
-                // Section 1: Pengenalan LeveLearn
                 _buildInfoCard(
                   title: "Visi LeveLearn",
                   content:
@@ -99,7 +95,6 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                   icon: LineAwesomeIcons.rocket_solid,
                 ),
 
-                // Section 2: Logo Tengah (Hero Animation)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   child: Center(
@@ -113,7 +108,6 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                   ),
                 ),
 
-                // Section 3: Metodologi Adaptive Gamification
                 _buildInfoCard(
                   title: "Adaptive Gamification",
                   content:
@@ -121,7 +115,6 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                   icon: LineAwesomeIcons.brain_solid,
                 ),
 
-                // Section 4: Hybrid Preference Elicitation & GMM
                 _buildInfoCard(
                   title: "Hybrid Elicitation (ML)",
                   content:
@@ -129,7 +122,6 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                   icon: LineAwesomeIcons.microchip_solid,
                 ),
 
-                // Section 5: Tech Stack
                 const Padding(
                   padding: EdgeInsets.fromLTRB(24, 30, 24, 15),
                   child: Text(
@@ -144,11 +136,11 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
 
                 _buildTechStackGrid(),
 
-                Padding(
+                  Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20),
                   child: Text(
                     "Arsitektur sistem dibangun menggunakan Flutter (Mobile), React (Web), dan Node.js Express (Backend). Data dikelola secara tangguh oleh PostgreSQL dengan Supabase Storage, serta didukung Docker untuk standarisasi deployment aplikasi.",
-                    textAlign: TextAlign.center,
+                    textAlign: TextAlign.justify, // Mengubah ke justify
                     style: TextStyle(
                       fontSize: 13,
                       color: Colors.grey[700],
@@ -157,7 +149,39 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                   ),
                 ),
 
-                // Button GitHub
+                // --- SECTION: TEAM PENGEMBANGAN ---
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(24, 40, 24, 15),
+                  child: Text(
+                    "Team Pengembangan",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'DIN_Next_Rounded',
+                    ),
+                  ),
+                ),
+
+                _buildTeamCard(
+                  version: "Versi 1.0",
+                  members: [
+                    "Benhard Yudha",
+                    "Archico Darius Simpar Sembiring",
+                    "Rafael A. C. Manurung",
+                  ],
+                  color: Colors.blueGrey,
+                ),
+
+                _buildTeamCard(
+                  version: "Versi 2.0",
+                  members: [
+                    "Charlos Pardomuan Purba",
+                    "Sunanda Erika N Munthe",
+                    "Yan Rikho Siallagan",
+                  ],
+                  color: AppColors.primaryColor,
+                ),
+
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10),
                   child: Container(
@@ -195,7 +219,7 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
                 const SizedBox(height: 50),
                 const Center(
                   child: Text(
-                    "© 2026 LeveLearn • Versi 2.0.0\nAll rights reserved.",
+                    "© 2026 LeveLearn • Versi 2.0\nAll rights reserved.",
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.grey, fontSize: 12, height: 1.5),
                   ),
@@ -255,6 +279,7 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
           const SizedBox(height: 15),
           Text(
             content,
+            textAlign: TextAlign.justify, // Menambahkan justify di sini
             style: const TextStyle(fontSize: 14, height: 1.6, color: Colors.black87),
           ),
         ],
@@ -262,8 +287,57 @@ class _AboutAppScreenState extends State<AboutAppScreen> {
     );
   }
 
+  Widget _buildTeamCard({required String version, required List<String> members, required Color color}) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.2), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LineAwesomeIcons.users_solid, color: color, size: 20),
+              const SizedBox(width: 10),
+              Text(
+                version,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                  fontFamily: 'DIN_Next_Rounded',
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 25),
+          ...members.map((name) => Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      name,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTechStackGrid() {
-    // Array aset gambar teknologi
     final techIcons = [
       'flutter.png', 'node.png', 'react.png',
       'postgresql.png', 'supabase.png', 'docker.png'
