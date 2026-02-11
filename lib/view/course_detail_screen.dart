@@ -208,10 +208,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: const Icon(LineAwesomeIcons.angle_left_solid, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
           Image.asset("lib/assets/LeveLearn.png", width: 100),
           const SizedBox(width: 40),
         ],

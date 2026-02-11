@@ -3,6 +3,7 @@ import 'package:app/utils/colors.dart';
 import 'package:app/view/course_initial_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart'; 
 import '../model/course.dart';
 import 'package:app/global_var.dart';
 
@@ -22,8 +23,6 @@ class _CourseDetail extends State<MycourseScreen> {
   List<Course> filteredCourses = [];
   bool isLoading = true;
 
-  // Mengambil IP dan Default Image dari GlobalVar agar terpusat
-  final String serverIp = GlobalVar.serverIp;
   final String defaultImageUrl = 'https://www.globalcareercounsellor.com/blog/wp-content/uploads/2018/05/Online-Career-Counselling-course.jpg';
 
   @override
@@ -42,7 +41,6 @@ class _CourseDetail extends State<MycourseScreen> {
     _searchController.addListener(_filterCourses);
   }
 
-  // Fungsi helper untuk memperbaiki URL gambar (Sinkron dengan GlobalVar)
   String formatUrl(String? url) {
     return GlobalVar.formatImageUrl(url);
   }
@@ -80,6 +78,22 @@ class _CourseDetail extends State<MycourseScreen> {
     }
   }
 
+  // Fungsi untuk mengunduh sertifikat melalui backend
+  Future<void> _downloadCertificate(int courseId) async {
+    int? userId = pref.getInt('userId');
+    // Membangun URL endpoint sertifikat: /api/certificate/:userId/:courseId
+    final String certificateUrl = "${GlobalVar.baseUrl}/api/certificate/$userId/$courseId";
+    
+    final Uri url = Uri.parse(certificateUrl);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Gagal mengunduh sertifikat")),
+        );
+      }
+    }
+  }
+
   void _filterCourses() {
     String query = _searchController.text.toLowerCase().trim();
     if (query.isEmpty) {
@@ -100,17 +114,12 @@ class _CourseDetail extends State<MycourseScreen> {
   }
 
   String progressSentence(int progress) {
-    if (progress <= 20) {
-      return 'Progressmu baru $progress%, ayo kerjakan lagi!';
-    } else if (progress <= 40) {
-      return 'Progressmu baru $progress%, yuk ditingkatkan!';
-    } else if (progress <= 60) {
-      return 'Sudah $progress%, jangan patah semangat, ayo!';
-    } else if (progress <= 80) {
-      return 'Sudah $progress%, lumayan, sedikit lagi!';
-    } else {
-      return 'Sudah $progress%, tanggung, ayo selesaikan!';
-    }
+    if (progress >= 100) return 'Selamat! Kursus Anda telah selesai.';
+    if (progress <= 20) return 'Progressmu baru $progress%, ayo kerjakan lagi!';
+    if (progress <= 40) return 'Progressmu baru $progress%, yuk ditingkatkan!';
+    if (progress <= 60) return 'Sudah $progress%, jangan patah semangat, ayo!';
+    if (progress <= 80) return 'Sudah $progress%, lumayan, sedikit lagi!';
+    return 'Sudah $progress%, tanggung, ayo selesaikan!';
   }
 
   @override
@@ -119,14 +128,13 @@ class _CourseDetail extends State<MycourseScreen> {
       onTap: () => FocusScope.of(context).unfocus(),
       child: Stack(
         children: [
-          // Background Pattern
           Container(
             decoration: const BoxDecoration(
               color: Colors.white,
               image: DecorationImage(
-                image: AssetImage("lib/assets/learnbg.png"),
+                image: AssetImage("lib/assets/pictures/background-pattern.png"),
                 fit: BoxFit.cover,
-                opacity: 0.1, // Disesuaikan agar teks lebih terbaca
+                opacity: 0.1,
               ),
             ),
           ),
@@ -194,20 +202,10 @@ class _CourseDetail extends State<MycourseScreen> {
 
   Widget _listCourse() {
     if (filteredCourses.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Opacity(
-              opacity: 0.5,
-              child: Image.asset('lib/assets/pictures/background-pattern.png', width: 150),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Kursus tidak ditemukan',
-              style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 16, color: Colors.grey),
-            ),
-          ],
+      return const Center(
+        child: Text(
+          'Kursus tidak ditemukan',
+          style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 16, color: Colors.grey),
         ),
       );
     }
@@ -224,13 +222,12 @@ class _CourseDetail extends State<MycourseScreen> {
   Widget _buildCourseItem(Course course) {
     ImageProvider courseImage;
     String formattedUrl = formatUrl(course.image);
+    bool isCompleted = (course.progress ?? 0) >= 100;
 
     if (course.image != null && course.image.isNotEmpty) {
-      if (course.image.startsWith('lib/assets/')) {
-        courseImage = AssetImage(course.image);
-      } else {
-        courseImage = NetworkImage(formattedUrl);
-      }
+      courseImage = course.image.startsWith('lib/assets/') 
+          ? AssetImage(course.image) 
+          : NetworkImage(formattedUrl) as ImageProvider;
     } else {
       courseImage = NetworkImage(defaultImageUrl);
     }
@@ -251,105 +248,116 @@ class _CourseDetail extends State<MycourseScreen> {
         borderRadius: BorderRadius.circular(15),
         child: Material(
           color: AppColors.primaryColor,
-          child: InkWell(
-            onTap: () async {
-              await pref.setInt('lastestSelectedCourse', course.id);
-              if (!mounted) return;
-              Navigator.push(
-                context, 
-                MaterialPageRoute(builder: (context) => CourseInitialScreen(id: course.id))
-              );
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
+          child: Column(
+            children: [
+              InkWell(
+                onTap: () async {
+                  await pref.setInt('lastestSelectedCourse', course.id);
+                  if (!mounted) return;
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (context) => CourseInitialScreen(id: course.id))
+                  ).then((_) => getEnrolledCourse()); 
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Image(
-                      image: courseImage,
-                      height: 150,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
+                    Stack(
+                      children: [
+                        Image(
+                          image: courseImage,
                           height: 150,
-                          color: Colors.grey[300],
-                          child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
-                        );
-                      },
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            height: 150, color: Colors.grey[300],
+                            child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                          ),
+                        ),
+                        Positioned(
+                          top: 10, right: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: isCompleted ? Colors.green : Colors.black54,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              isCompleted ? "COMPLETED" : course.codeCourse.toUpperCase(),
+                              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          course.codeCourse.toUpperCase(),
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.all(15),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            course.courseName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white,
+                              fontFamily: 'DIN_Next_Rounded',
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Progress', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              Text('${course.progress ?? 0}%', style: const TextStyle(color: AppColors.accentColor, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              backgroundColor: Colors.white12,
+                              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.secondaryColor),
+                              value: (course.progress ?? 0) / 100,
+                              minHeight: 8,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            progressSentence(course.progress ?? 0),
+                            style: const TextStyle(
+                              fontSize: 11, fontStyle: FontStyle.italic, color: Colors.white60,
+                              fontFamily: 'DIN_Next_Rounded',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
+              ),
+              
+              // TOMBOL DOWNLOAD SERTIFIKAT (Hanya muncul jika 100%)
+              if (isCompleted)
                 Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        course.courseName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.white,
-                          fontFamily: 'DIN_Next_Rounded',
-                        ),
+                  padding: const EdgeInsets.only(left: 15, right: 15, bottom: 15),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _downloadCertificate(course.id),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accentColor,
+                        foregroundColor: AppColors.primaryColor,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      const SizedBox(height: 5),
-                      Text(
-                        course.description ?? "No description available",
-                        style: const TextStyle(fontSize: 12, color: Colors.white70, fontFamily: 'DIN_Next_Rounded'),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      icon: const Icon(Icons.workspace_premium),
+                      label: const Text(
+                        "Download Certificate",
+                        style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'),
                       ),
-                      const SizedBox(height: 15),
-                      // Progress Bar Section
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Progress', style: TextStyle(color: Colors.white, fontSize: 12)),
-                          Text('${course.progress ?? 0}%', style: const TextStyle(color: AppColors.accentColor, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: LinearProgressIndicator(
-                          backgroundColor: Colors.white12,
-                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.secondaryColor),
-                          value: (course.progress ?? 0) / 100,
-                          minHeight: 8,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        progressSentence(course.progress ?? 0),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontStyle: FontStyle.italic,
-                          color: Colors.white60,
-                          fontFamily: 'DIN_Next_Rounded',
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
