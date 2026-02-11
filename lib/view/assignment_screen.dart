@@ -84,12 +84,12 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     try {
       debugPrint("--- Memulai Proses Submit ---");
 
-      // 1. Log Aktivitas ke Backend
+      // 1. Log Aktivitas ke Backend (Penting untuk analisis GMM Disruptors)
       await ActivityService.sendLog(
         userId: widget.user.id,
-        type: 'COMPLETION_RATE',
+        type: 'COMPLETION', // Diganti ke COMPLETION untuk akurasi data log
         value: 1.0,
-        metadata: {"chapterId": status.chapterId},
+        metadata: {"chapterId": status.chapterId, "type": "ASSIGNMENT"},
       ).timeout(const Duration(seconds: 5), onTimeout: () {
         debugPrint("Log aktivitas timeout, lanjut ke upload...");
       });
@@ -116,8 +116,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
             ),
           ).timeout(const Duration(seconds: 40));
 
-      debugPrint("Upload Supabase Berhasil.");
-
       // 4. Ambil Public URL
       final String publicUrl = Supabase.instance.client.storage
           .from('assignment')
@@ -129,20 +127,23 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
       if (success) {
         debugPrint("Backend Sync Berhasil.");
         
-        // PERBAIKAN: OPTIMISTIC UPDATE
-        // Langsung masukkan URL baru ke list lokal di memori HP agar UI langsung update
+        // OPTIMISTIC UPDATE: Tandai selesai di lokal HP
         if (mounted) {
           setState(() {
             status.submissionHistory.insert(0, publicUrl); 
             status.assignmentDone = true;
+            status.isCompleted = true; // Menandai chapter selesai secara eksplisit
           });
         }
 
-        // PERBAIKAN: JEDA SINKRONISASI
-        // Beri waktu 1 detik agar database backend selesai melakukan commit transaksi
+        // --- FIX: TRIGGER PEMBUKAAN CHAPTER BERIKUTNYA ---
+        // Parameter 'true' memicu fungsi update progres kursus secara keseluruhan
+        await widget.updateProgress(true); 
+
+        // Beri jeda sinkronisasi database backend
         await Future.delayed(const Duration(milliseconds: 1000));
 
-        // 6. RE-FETCH: Ambil status "resmi" terbaru dari DB untuk sinkronisasi final
+        // 6. RE-FETCH: Ambil status resmi terbaru dari DB
         final updatedStatus = await UserChapterService.getChapterStatus(widget.user.id, status.chapterId);
         
         if (mounted) {
@@ -154,7 +155,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
           _showSuccessDialog();
         }
       } else {
-        throw Exception("Backend gagal menyimpan riwayat pengiriman.");
+        throw Exception("Backend gagal menyimpan pengiriman.");
       }
     } catch (e) {
       debugPrint("CRASH SAAT SUBMIT: $e");
@@ -163,7 +164,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
           SnackBar(
             content: Text("Gagal kirim: ${e.toString()}"),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -172,6 +172,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     }
   }
 
+  // --- UI WIDGETS ---
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -265,9 +266,9 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
+                  color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.withValues(alpha: 0.2))),
+                  border: Border.all(color: Colors.blue.withOpacity(0.2))),
               child: const Row(
                 children: [
                   Icon(LineAwesomeIcons.file_download_solid, color: Colors.blue),
@@ -390,7 +391,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
       padding: const EdgeInsets.all(16),
       width: double.infinity,
       decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.8),
+          color: Colors.white.withOpacity(0.8),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.grey.shade200)),
       child: Column(
@@ -429,7 +430,7 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
         title: const Text("Berhasil!",
             style: TextStyle(
                 fontFamily: 'DIN_Next_Rounded', fontWeight: FontWeight.bold)),
-        content: const Text("Tugas telah dikirim dan tersimpan di riwayat."),
+        content: const Text("Tugas telah dikirim. Chapter selanjutnya akan segera terbuka setelah progres diperbarui."),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context), child: const Text("Tutup"))

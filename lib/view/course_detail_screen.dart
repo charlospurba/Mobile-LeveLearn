@@ -4,14 +4,12 @@ import 'package:http/http.dart' as http;
 
 import 'package:app/global_var.dart';
 import 'package:app/model/chapter.dart';
-import 'package:app/model/user_badge.dart'; // Digunakan di listBadge
 import 'package:app/service/badge_service.dart';
 import 'package:app/service/course_service.dart';
 import 'package:app/service/user_chapter_service.dart';
 import 'package:app/service/user_course_service.dart';
 import 'package:app/service/user_service.dart';
 import 'package:flutter/material.dart';
-import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/badge.dart';
@@ -59,6 +57,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
       if (idUser != 0) {
         final fetchedUser = await UserService.getUserById(idUser);
         user = fetchedUser;
+        
         await fetchAdaptiveProfile(idUser);
 
         if (idCourse != 0) {
@@ -75,6 +74,8 @@ class _CourseDetail extends State<CourseDetailScreen> {
           
           final chapters = results[3] as List<Chapter>;
           listChapter = await getStatusChapter(chapters);
+
+          debugPrint("ADAPTIVE SYNC: User is $userType, DB Level: ${uc?.currentChapter}");
         }
       }
     } catch (e) {
@@ -120,21 +121,13 @@ class _CourseDetail extends State<CourseDetailScreen> {
     }
   }
 
-  void updateUserCourse() async {
-    if (uc != null) {
-      await UserCourseService.updateUserCourse(uc!.id, uc!);
-    }
-  }
-
   int idOfBadge(int isCheckpoint) {
     if (listBadge == null) return 0;
     try {
       if (isCheckpoint == 1) return listBadge!.firstWhere((i) => i.type == 'BEGINNER').id;
       if (isCheckpoint == 2) return listBadge!.firstWhere((i) => i.type == 'INTERMEDIATE').id;
       if (isCheckpoint == 3) return listBadge!.firstWhere((i) => i.type == 'ADVANCE').id;
-    } catch (_) {
-      return 0;
-    }
+    } catch (_) { return 0; }
     return 0;
   }
 
@@ -148,9 +141,9 @@ class _CourseDetail extends State<CourseDetailScreen> {
         child: Stack(
           children: [
             Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 image: DecorationImage(
-                  image: const AssetImage("lib/assets/learnbg.png"),
+                  image: AssetImage("lib/assets/learnbg.png"),
                   fit: BoxFit.cover,
                   opacity: 0.1,
                 ),
@@ -183,7 +176,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
           fit: StackFit.expand,
           children: [
             Image.asset("lib/assets/gamification.jpeg", fit: BoxFit.cover),
-            Container(color: const Color(0xFF441F7F).withValues(alpha: 0.6)),
+            Container(color: const Color(0xFF441F7F).withOpacity(0.6)),
             SafeArea(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -270,28 +263,20 @@ class _CourseDetail extends State<CourseDetailScreen> {
   Widget _decideChapterItem(int index) {
     if (uc == null) return const SizedBox();
     
-    if (userType == "Free Spirits" || userType == "Players" || userType == "Achievers") {
-      return _buildCourseItem(index);
+    // --- LOGIKA ADAPTIF BERDASARKAN CLUSTER ---
+    
+    // Profil non-Disruptors mendapatkan akses terbuka (Open Exploration)
+    if (userType == "Players" || userType == "Achievers" || userType == "Free Spirits") {
+        return _buildCourseItem(index);
     }
 
+    // Profil Disruptors menggunakan logika Sekuensial ketat (Locking System)
     bool isUnlockedByLevel = index <= uc!.currentChapter - 1;
-    bool isStrictlyBlocked = false;
-    String blockMessage = "Selesaikan level sebelumnya!";
 
-    if (userType == "Disruptors" && index > 0) {
-      final prevChapterStatus = listChapter[index - 1].status;
-      if (prevChapterStatus != null) {
-        if (!prevChapterStatus.materialDone || !prevChapterStatus.assessmentDone) {
-          isStrictlyBlocked = true;
-          blockMessage = "LEVEL TERKUNCI: Selesaikan level $index!";
-        }
-      }
-    }
-
-    if (!isUnlockedByLevel || isStrictlyBlocked) {
-      return _buildCourseItemLocked(index, blockMessage);
-    } else {
+    if (isUnlockedByLevel) {
       return _buildCourseItem(index);
+    } else {
+      return _buildCourseItemLocked(index, "Latih kompetensimu di level sebelumnya!");
     }
   }
 
@@ -310,7 +295,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF4A148C).withValues(alpha: 0.2), 
+                  color: const Color(0xFF4A148C).withOpacity(0.2), 
                   blurRadius: 10, 
                   offset: const Offset(0, 5)
                 )
@@ -323,7 +308,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
                 borderRadius: BorderRadius.circular(24),
                 onTap: () async {
                   await updateStatus(index);
-                  
                   if (!mounted) return;
 
                   await Navigator.push(
@@ -338,10 +322,14 @@ class _CourseDetail extends State<CourseDetailScreen> {
                         chapterName: chapter.name,
                         idBadge: idOfBadge(chapter.isCheckpoint),
                         level: chapter.level,
+                        updateProgress: (val) async {
+                           await _initialLoad();
+                        },
                       ),
                     ),
                   );
 
+                  await Future.delayed(const Duration(milliseconds: 600));
                   if (mounted) _initialLoad();
                 },
                 child: Container(
@@ -353,7 +341,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
                         end: Alignment.bottomRight, 
                         colors: [Color(0xFF5E2B99), Color(0xFF441F7F)]
                       ),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5)),
+                      border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5)),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 50, 20, 24),
                     child: Column(
@@ -437,7 +425,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: isDone ? Colors.white.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.1), 
+        color: isDone ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.1), 
         shape: BoxShape.circle
       ),
       child: Icon(icon, size: 18, color: isDone ? const Color(0xFFFFD700) : Colors.white24),

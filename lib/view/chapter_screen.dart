@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:app/global_var.dart'; // Gunakan GlobalVar
+import 'package:app/global_var.dart';
 import 'package:app/model/chapter_status.dart';
 import 'package:app/model/user_course.dart';
 import 'package:app/utils/colors.dart';
@@ -22,6 +22,10 @@ class Chapterscreen extends StatefulWidget {
   final String chapterName;
   final int idBadge;
   final int level;
+  
+  // FIX: Menambahkan parameter updateProgress agar bisa dipanggil dari CourseDetail
+  final Function(bool) updateProgress;
+
   const Chapterscreen({
     super.key,
     required this.status,
@@ -32,6 +36,8 @@ class Chapterscreen extends StatefulWidget {
     required this.chapterName,
     this.idBadge = 0,
     required this.level,
+    // FIX: Menambahkan ke constructor
+    required this.updateProgress,
   });
 
   @override
@@ -60,7 +66,6 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
     _tabController = TabController(length: 3, vsync: this);
   }
 
-  // PERBAIKAN: Gunakan GlobalVar, prefix /api, dan timeout lebih lama
   Future<void> _fetchUserCluster() async {
     final String url = "${GlobalVar.baseUrl}/api/user/adaptive/${widget.user.id}";
     try {
@@ -80,11 +85,15 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
     super.dispose();
   }
 
-  void updateProgress(bool value) {
+  // Fungsi internal untuk mengupdate UI lokal di dalam tab
+  void _localUpdateProgress(bool value) {
     setState(() {
       materialComplete = true;
-      _screens[1] = null; 
+      _screens[1] = null; // Reset tab Assessment agar build ulang
     });
+    
+    // Meneruskan ke fungsi progres global (CourseDetail)
+    widget.updateProgress(value);
   }
 
   void updateStatus(ChapterStatus value) {
@@ -104,7 +113,7 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
   void updateAssessmentFinished(bool value) {
     setState(() {
       _assessmentFinished = value;
-      _screens[2] = null;
+      _screens[2] = null; // Reset tab Assignment agar build ulang
     });
   }
 
@@ -114,18 +123,41 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
         case 0:
           _screens[index] = _materialLocked
               ? _lockedMaterialContent()
-              : MaterialScreen(status: widget.status, chapterName: widget.chapterName, updateProgress: updateProgress, updateStatus: updateStatus,);
+              : MaterialScreen(
+                  status: widget.status, 
+                  chapterName: widget.chapterName, 
+                  updateProgress: _localUpdateProgress, 
+                  updateStatus: updateStatus,
+                );
           break;
         case 1:
           _screens[index] = materialComplete
               ? widget.status.assessmentDone
                   ? AlreadyFinishedAssessmentAssessmentScreen(status: widget.status, user: widget.user)
-                  : AssessmentScreen(status: widget.status, user: widget.user, userType: userType, updateMaterialLocked: updateMaterialLocked, updateStatus: updateStatus, updateAssessmentFinished: updateAssessmentFinished, updateAssessmentStarted: updateAssessmentStarted,)
+                  : AssessmentScreen(
+                      status: widget.status, 
+                      user: widget.user, 
+                      userType: userType, 
+                      updateMaterialLocked: updateMaterialLocked, 
+                      updateStatus: updateStatus, 
+                      updateAssessmentFinished: updateAssessmentFinished, 
+                      updateAssessmentStarted: updateAssessmentStarted,
+                    )
               : _lockedContent();
           break;
         case 2:
-          _screens[index] = widget.status.assessmentDone || _assessmentFinished
-              ? AssignmentScreen(status: status, user: widget.user, uc: widget.uc, level: widget.level, chLength: widget.chLength, idBadge: widget.idBadge, updateProgress: updateProgress, updateStatus: updateStatus)
+          _screens[index] = (widget.status.assessmentDone || _assessmentFinished)
+              ? AssignmentScreen(
+                  status: status, 
+                  user: widget.user, 
+                  uc: widget.uc, 
+                  level: widget.level, 
+                  chLength: widget.chLength, 
+                  idBadge: widget.idBadge, 
+                  // Meneruskan fungsi update ke Assignment agar saat tugas dikirim, gembok terbuka
+                  updateProgress: widget.updateProgress, 
+                  updateStatus: updateStatus,
+                )
               : _lockedAssignmentContent();
           break;
       }
@@ -143,7 +175,11 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
       },
       child: Scaffold(
         appBar: AppBar(
-          automaticallyImplyLeading: false,
+          automaticallyImplyLeading: true, // Diubah menjadi true agar ada tombol back manual
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
           backgroundColor: AppColors.primaryColor,
           title: Text(widget.chapterName, style: const TextStyle(color: Colors.white, fontSize: 18, fontFamily: 'DIN_Next_Rounded')),
           centerTitle: true,
@@ -159,7 +195,9 @@ class _ChapterScreenState extends State<Chapterscreen> with TickerProviderStateM
                   indicator: CustomTabIndicator(color: AppColors.primaryColor),
                   labelColor: AppColors.primaryColor,
                   unselectedLabelColor: Colors.grey.shade400,
-                  onTap: (index) => setState(() => _currentIndex = index),
+                  onTap: (index) {
+                    setState(() => _currentIndex = index);
+                  },
                   tabs: const [Tab(text: 'Material'), Tab(text: 'Assessment'), Tab(text: 'Assignment')],
                 ),
               ),
