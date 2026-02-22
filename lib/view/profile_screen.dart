@@ -11,7 +11,6 @@ import 'package:app/view/about_app.dart';
 import 'package:app/view/quick_access_screen.dart';
 import 'package:app/view/trade_screen.dart';
 import 'package:app/view/update_profile_screeen.dart';
-import 'package:app/view/avatar_frame_painter.dart'; 
 import 'package:flutter/material.dart';
 import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,11 +51,8 @@ class _ProfileState extends State<ProfileScreen> {
   List<Course>? allCourses;
   int streakDays = 0;
 
-  String userType = "Disruptors"; 
-  String? currentFrameDesignId; 
-
-  // PERBAIKAN: Gunakan GlobalVar untuk IP
-  final String serverIp = GlobalVar.serverIp;
+  String userType = "Disruptors";
+  String? currentFrameDesignId; // Ini akan berisi "Frame1", "Frame2", dst.
 
   List<AvatarModel> availableAvatars = [
     AvatarModel(id: 1, imageUrl: 'lib/assets/avatars/avatar1.jpeg', price: 0),
@@ -79,7 +75,6 @@ class _ProfileState extends State<ProfileScreen> {
     getUserData();
   }
 
-  // Helper untuk membersihkan URL (Disederhanakan menggunakan GlobalVar)
   String formatUrl(String? url) {
     return GlobalVar.formatImageUrl(url);
   }
@@ -94,8 +89,7 @@ class _ProfileState extends State<ProfileScreen> {
 
       if (idUser != null) {
         Student fetchedUser = await UserService.getUserById(idUser);
-        
-        // PERBAIKAN: Jalankan AI Cluster & Frame secara paralel agar tidak stuck
+
         await Future.wait([
           fetchAdaptiveProfile(idUser),
           fetchEquippedFrame(idUser),
@@ -111,7 +105,6 @@ class _ProfileState extends State<ProfileScreen> {
           setState(() {
             user = fetchedUser;
             streakDays = fetchedUser.streak;
-            
             userBadges = (results[0] as List<UserBadge>).where((b) => !b.isPurchased).toList();
             
             final List<Student> allUsers = results[1] as List<Student>;
@@ -138,11 +131,11 @@ class _ProfileState extends State<ProfileScreen> {
 
   Future<void> fetchEquippedFrame(int userId) async {
     try {
-      // PERBAIKAN: Tambahkan /api/
       final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/usertrade/equipped/$userId"));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted && data != null && data['trade'] != null) {
+          // Mengambil nama file (misal Frame1) dari database image field
           setState(() => currentFrameDesignId = data['trade']['image']?.toString());
         } else {
           setState(() => currentFrameDesignId = null);
@@ -154,7 +147,6 @@ class _ProfileState extends State<ProfileScreen> {
   }
 
   Future<void> fetchAdaptiveProfile(int idUser) async {
-    // PERBAIKAN: Jalur API yang benar & timeout lebih lama
     final String url = "${GlobalVar.baseUrl}/api/user/adaptive/$idUser";
     try {
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
@@ -175,11 +167,7 @@ class _ProfileState extends State<ProfileScreen> {
     prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context, 
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false
-      );
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
     }
   }
 
@@ -229,7 +217,7 @@ class _ProfileState extends State<ProfileScreen> {
   }
 
   Widget _buildProfileHeader(bool isDisruptor, bool isPlayer) {
-    Color labelColor = Colors.red; 
+    Color labelColor = Colors.red;
     if (userType == "Achievers") labelColor = Colors.blue;
     if (userType == "Players") labelColor = Colors.orange;
     if (userType == "Free Spirits") labelColor = Colors.teal;
@@ -243,7 +231,7 @@ class _ProfileState extends State<ProfileScreen> {
       padding: const EdgeInsets.only(bottom: 32, top: 20),
       child: Column(
         children: [
-          _buildAvatarStack(), 
+          _buildAvatarStack(),
           const SizedBox(height: 15),
           Text(user?.name ?? "", style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
           const SizedBox(height: 8),
@@ -285,44 +273,63 @@ class _ProfileState extends State<ProfileScreen> {
     return Stack(
       alignment: Alignment.center,
       children: [
+        // FOTO PROFIL (Lingkaran Dasar)
         Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
+          width: 100, // Sedikit lebih kecil agar bingkai membungkus di luar
+          height: 100,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle, 
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)
+            ]
+          ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(100),
             child: imgPath != null && imgPath.isNotEmpty
                 ? (imgPath.startsWith('lib/assets/')
                     ? Image.asset(imgPath, fit: BoxFit.cover)
-                    : Image.network(formatUrl(imgPath), 
-                        fit: BoxFit.cover, 
-                        errorBuilder: (c, e, s) => const Icon(Icons.person, size: 80, color: Colors.white)))
-                : const Icon(Icons.person, size: 80, color: Colors.white),
+                    : Image.network(formatUrl(imgPath), fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.person, size: 60, color: Colors.white)))
+                : const Icon(Icons.person, size: 60, color: Colors.white),
           ),
         ),
-        
-        if (currentFrameDesignId != null && currentFrameDesignId!.isNotEmpty && currentFrameDesignId != "null")
-          IgnorePointer(
-            child: SizedBox(
-              width: 140, 
-              height: 140,
-              child: CustomPaint(
-                painter: AvatarFramePainter(currentFrameDesignId!),
-              ),
-            ),
+
+        // BINGKAI ASSET PNG (Lapisan Atas)
+        if (currentFrameDesignId != null && currentFrameDesignId != "null")
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0.8, end: 1.0),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) {
+              return Transform.scale(
+                scale: scale,
+                child: SizedBox(
+                  width: 145, // Ukuran bingkai lebih besar dari foto
+                  height: 145,
+                  child: Image.asset(
+                    'lib/assets/Frames/$currentFrameDesignId.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                  ),
+                ),
+              );
+            }
           ),
 
+        // TOMBOL PENCIL (Edit)
         Positioned(
-          bottom: 0, right: 0,
+          bottom: 5,
+          right: 5,
           child: GestureDetector(
             onTap: () async {
               final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!, availableAvatars: availableAvatars)));
               if (result == true) getUserData();
             },
             child: Container(
-              width: 35, height: 35,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(shape: BoxShape.circle, color: GlobalVar.secondaryColor, border: Border.all(color: Colors.white, width: 2)),
-              child: const Icon(LineAwesomeIcons.pencil_alt_solid, color: Colors.white, size: 18),
+              child: const Icon(LineAwesomeIcons.pencil_alt_solid, color: Colors.white, size: 16),
             ),
           ),
         )
@@ -357,9 +364,7 @@ class _ProfileState extends State<ProfileScreen> {
                           padding: const EdgeInsets.only(right: 12),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: fixUrl.startsWith('lib/assets/') 
-                                ? Image.asset(fixUrl, width: 60, height: 60)
-                                : Image.network(fixUrl, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: 60)),
+                            child: fixUrl.startsWith('lib/assets/') ? Image.asset(fixUrl, width: 60, height: 60) : Image.network(fixUrl, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: 60)),
                           ),
                         ),
                       );
@@ -412,9 +417,7 @@ class _ProfileState extends State<ProfileScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(borderRadius: BorderRadius.circular(16), child: badge.image != null 
-                  ? (badge.image!.startsWith('lib/assets/') ? Image.asset(badge.image!, height: 100) : Image.network(formatUrl(badge.image!), fit: BoxFit.cover, height: 100))
-                  : Image.asset('lib/assets/pictures/icon.png', height: 100)),
+              ClipRRect(borderRadius: BorderRadius.circular(16), child: badge.image != null ? (badge.image!.startsWith('lib/assets/') ? Image.asset(badge.image!, height: 100) : Image.network(formatUrl(badge.image!), fit: BoxFit.cover, height: 100)) : Image.asset('lib/assets/pictures/icon.png', height: 100)),
               const SizedBox(height: 16),
               Text(badge.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor, fontSize: 18)),
               Text('(${badge.type})', style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),
@@ -425,7 +428,9 @@ class _ProfileState extends State<ProfileScreen> {
           actions: [SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor), onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: Colors.white))))],
         ),
       );
-    } catch (e) { debugPrint("Error show badge: $e"); }
+    } catch (e) {
+      debugPrint("Error show badge: $e");
+    }
   }
 }
 

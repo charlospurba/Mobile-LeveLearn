@@ -134,6 +134,26 @@ flutter:
     - lib/assets/avatars/avatar11.jpeg
     - lib/assets/avatars/avatar12.jpeg
     - lib/assets/pictures/postgresql.png
+    - lib/assets/Frames/Frame1.png
+    - lib/assets/Frames/Frame2.png
+    - lib/assets/Frames/Frame3.png
+    - lib/assets/Frames/Frame4.png
+    - lib/assets/Frames/Frame5.png
+    - lib/assets/Frames/Frame6.png
+    - lib/assets/Frames/Frame7.png
+    - lib/assets/Frames/Frame8.png
+    - lib/assets/Frames/Frame9.png
+    - lib/assets/Frames/Frame10.png
+    - lib/assets/Frames/Frame11.png
+    - lib/assets/Frames/Frame12.png
+    - lib/assets/Frames/Frame13.png
+    - lib/assets/Frames/Frame14.png
+    - lib/assets/Frames/Frame15.png
+    - lib/assets/Frames/Frame16.png
+    - lib/assets/Frames/Frame17.png
+    - lib/assets/Frames/Frame18.png
+    - lib/assets/Frames/Frame19.png
+    - lib/assets/Frames/Frame20.png
 
   fonts:
     - family: DIN_Next_Rounded

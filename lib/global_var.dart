@@ -7,7 +7,7 @@ class GlobalVar {
   GlobalVar._internal();
 
   // --- IP LAPTOP (WAJIB SAMA DENGAN IPCONFIG) ---
-  static const String serverIp = '10.107.253.43';
+  static const String serverIp = '72.60.198.84';
   static const String port = '7000';
 
   static String get baseUrl {

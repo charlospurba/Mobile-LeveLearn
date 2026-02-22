@@ -10,10 +10,7 @@ Color purple = AppColors.primaryColor;
 Color backgroundNavHex = const Color(0xFFF3EDF7);
 
 void main() async {
-  // 1. Pastikan binding sudah siap
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 2. Inisialisasi Supabase dengan proteksi Error (Penting untuk Flutter Web)
   try {
     await Supabase.initialize(
       url: "https://hfuwatcoqcitqykvrtbp.supabase.co",
@@ -23,11 +20,9 @@ void main() async {
     debugPrint("Supabase sudah terinisialisasi atau error: $e");
   }
 
-  // 3. Ambil data SharedPreferences
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   bool isFirstLaunch = prefs.getBool('firstLaunch') ?? true;
   
-  // 4. Cek Login Status (Langsung ambil dari prefs yang sudah di-await di atas)
   String? token = prefs.getString('token');
   bool isLoggedIn = token != null;
 
@@ -42,7 +37,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Tentukan layar pertama
     Widget home;
     if (isFirstLaunch) {
       home = const OnboardingScreen();
@@ -58,7 +52,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
-        fontFamily: 'DIN_Next_Rounded', // Konsisten dengan gaya UI Anda
+        fontFamily: 'DIN_Next_Rounded', 
       ),
       home: home,
     );

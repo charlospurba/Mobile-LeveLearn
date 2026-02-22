@@ -1,63 +1,138 @@
-import 'package:flutter/material.dart';
-import 'dart:math' as math;
+// import 'package:flutter/material.dart';
+// import 'dart:math' as math;
 
-class AvatarFramePainter extends CustomPainter {
-  final String designId;
-  AvatarFramePainter(this.designId);
+// class AvatarFramePainter extends CustomPainter {
+//   final String designId;
+//   AvatarFramePainter(this.designId);
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (designId.isEmpty || designId == "null") return;
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-    final paint = Paint()..style = PaintingStyle.stroke..strokeWidth = 6;
+//   @override
+//   void paint(Canvas canvas, Size size) {
+//     if (designId.isEmpty || designId == "null") return;
 
-    // Map ID Desain ke Warna/Gradient
-    Map<String, List<Color>> designColors = {
-      "DESIGN_GOLD_ELITE": [Color(0xFFFFD700), Color(0xFFB8860B)],
-      "DESIGN_NEON_CYBER": [Color(0xFF00FBFF), Color(0xFF0045FF)],
-      "DESIGN_NATURE_GREEN": [Color(0xFF4CAF50), Color(0xFF1B5E20)],
-      "DESIGN_OCEAN_BLUE": [Color(0xFF2196F3), Color(0xFF0D47A1)],
-      "DESIGN_ARCANE_PURPLE": [Color(0xFF9C27B0), Color(0xFF4A148C)],
-      "DESIGN_STELLAR_STARS": [Color(0xFFE91E63), Color(0xFF311B92)],
-      "DESIGN_STONE_GRAY": [Color(0xFF9E9E9E), Color(0xFF424242)],
-      "DESIGN_QUANTUM_ORANGE": [Color(0xFFFF9800), Color(0xFFE65100)],
-      "DESIGN_SPECTRUM_RAINBOW": [Colors.red, Colors.blue, Colors.green, Colors.yellow],
-      "DESIGN_FROST_WHITE": [Color(0xFFE3F2FD), Color(0xFF90CAF9)],
-      "DESIGN_SHADOW_BLACK": [Color(0xFF212121), Color(0xFF000000)],
-      "DESIGN_CRIMSON_RED": [Color(0xFFF44336), Color(0xFFB71C1C)],
-      "DESIGN_GLITCH_MAGENTA": [Color(0xFFFF00FF), Color(0xFF00FFFF)],
-      "DESIGN_SILVER_ROYAL": [Color(0xFFE0E0E0), Color(0xFF757575)],
-      "DESIGN_AUTUMN_BROWN": [Color(0xFF795548), Color(0xFF3E2723)],
-      "DESIGN_ELECTRIC_YELLOW": [Color(0xFFFFEB3B), Color(0xFFFBC02D)],
-      "DESIGN_TOXIC_LIME": [Color(0xFFCDDC39), Color(0xFF827717)],
-      "DESIGN_ZEN_BAMBOO": [Color(0xFF8BC34A), Color(0xFF33691E)],
-      "DESIGN_MIDNIGHT_NAVY": [Color(0xFF3F51B5), Color(0xFF1A237E)],
-      "DESIGN_LAVA_HOT": [Color(0xFFFF5722), Color(0xFFBF360C)],
-    };
+//     final center = Offset(size.width / 2, size.height / 2);
+//     final radius = size.width / 2;
+//     final rect = Rect.fromCircle(center: center, radius: radius);
 
-    List<Color> colors = designColors[designId] ?? [Colors.grey, Colors.black];
+//     final paint = Paint()
+//       ..style = PaintingStyle.stroke
+//       ..strokeWidth = 8
+//       ..strokeCap = StrokeCap.round;
 
-    // Menambahkan Efek Glow untuk desain tertentu (Neon, Arcane, Glitch)
-    if (designId.contains("NEON") || designId.contains("ARCANE") || designId.contains("GLITCH")) {
-      paint.maskFilter = const MaskFilter.blur(BlurStyle.outer, 10);
-    }
+//     // --- 1. SETTING WARNA BERDASARKAN DESIGN ---
+//     Map<String, List<Color>> designColors = {
+//       "DESIGN_UNIQUE_WITCH": [Colors.deepPurple, Colors.blueAccent],
+//       "DESIGN_UNIQUE_BUNNY_TECH": [Colors.pink.shade100, Colors.white],
+//       "DESIGN_UNIQUE_BUTTERFLY": [Colors.blueAccent, Colors.purpleAccent.shade100],
+//       "DESIGN_UNIQUE_NATURE": [Colors.green, Colors.limeAccent],
+//       "DESIGN_UNIQUE_CROWN": [Colors.orange, Colors.pinkAccent],
+//       "DESIGN_UNIQUE_FOX": [Colors.orangeAccent, Colors.redAccent],
+//       "DESIGN_UNIQUE_RAINBOW": [Colors.lightBlueAccent, Colors.white],
+//     };
 
-    paint.shader = LinearGradient(
-      colors: colors,
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    ).createShader(Rect.fromCircle(center: center, radius: radius));
+//     List<Color> colors = designColors[designId] ?? [Colors.pinkAccent, Colors.orangeAccent];
+//     paint.shader = LinearGradient(
+//       begin: Alignment.topLeft,
+//       end: Alignment.bottomRight,
+//       colors: colors,
+//     ).createShader(rect);
 
-    // Gambar Lingkaran Bingkai
-    canvas.drawCircle(center, radius, paint);
+//     final fillPaint = Paint()
+//       ..style = PaintingStyle.fill
+//       ..shader = paint.shader;
 
-    // Tambahan Ornamen untuk desain Elite
-    if (designId.contains("ELITE") || designId.contains("ROYAL")) {
-      canvas.drawCircle(center, radius + 4, paint..strokeWidth = 2);
-    }
-  }
+//     // --- 2. GAMBAR ORNAMEN UNIK (Lapis Bawah/Atas) ---
 
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
+//     // A. BUTTERFLY WINGS (Kiri & Kanan Besar)
+//     if (designId.contains("BUTTERFLY")) {
+//       _drawButterflyWings(canvas, size, fillPaint);
+//     }
+
+//     // B. WITCH HAT (Topi Miring)
+//     if (designId.contains("WITCH")) {
+//       _drawWitchHat(canvas, size, fillPaint);
+//     }
+
+//     // C. CYBER BUNNY (Headset + Telinga)
+//     if (designId.contains("BUNNY_TECH")) {
+//       _drawCyberBunny(canvas, size, fillPaint, paint);
+//     }
+
+//     // D. FOX TAIL & EARS
+//     if (designId.contains("FOX")) {
+//       _drawFoxFeatures(canvas, size, fillPaint);
+//     }
+
+//     // E. CROWN (Royal)
+//     if (designId.contains("CROWN")) {
+//       _drawCrown(canvas, size, fillPaint);
+//     }
+
+//     // --- 3. GAMBAR LINGKARAN UTAMA (BINGKAI) ---
+//     // Efek bayangan luar
+//     canvas.drawCircle(center, radius, Paint()
+//       ..color = Colors.black26
+//       ..style = PaintingStyle.stroke
+//       ..strokeWidth = 10
+//       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+    
+//     canvas.drawCircle(center, radius, paint);
+//   }
+
+//   void _drawButterflyWings(Canvas canvas, Size size, Paint paint) {
+//     Path leftWing = Path();
+//     leftWing.moveTo(size.width * 0.2, size.height * 0.5);
+//     leftWing.cubicTo(-size.width * 0.4, 0, -size.width * 0.2, size.height, size.width * 0.2, size.height * 0.8);
+//     canvas.drawPath(leftWing, paint);
+
+//     Path rightWing = Path();
+//     rightWing.moveTo(size.width * 0.8, size.height * 0.5);
+//     rightWing.cubicTo(size.width * 1.4, 0, size.width * 1.2, size.height, size.width * 0.8, size.height * 0.8);
+//     canvas.drawPath(rightWing, paint);
+//   }
+
+//   void _drawWitchHat(Canvas canvas, Size size, Paint paint) {
+//     Path hat = Path();
+//     hat.moveTo(size.width * 0.1, size.height * 0.3); // Alas topi
+//     hat.lineTo(size.width * 0.9, size.height * 0.1);
+//     hat.lineTo(size.width * 0.5, -size.height * 0.4); // Puncak topi
+//     hat.close();
+//     canvas.drawPath(hat, paint);
+//   }
+
+//   void _drawCyberBunny(Canvas canvas, Size size, Paint fill, Paint stroke) {
+//     // Telinga Kiri melengkung
+//     canvas.drawOval(Rect.fromLTWH(size.width * 0.1, -size.height * 0.3, size.width * 0.15, size.height * 0.5), fill);
+//     // Telinga Kanan nekuk
+//     Path path = Path();
+//     path.moveTo(size.width * 0.7, size.height * 0.1);
+//     path.lineTo(size.width * 0.9, -size.height * 0.2);
+//     path.lineTo(size.width * 1.1, 0);
+//     canvas.drawPath(path, fill);
+//     // Headset bawah
+//     canvas.drawRRect(RRect.fromLTRBR(size.width * 0.05, size.height * 0.7, size.width * 0.2, size.height * 0.9, const Radius.circular(5)), fill);
+//   }
+
+//   void _drawFoxFeatures(Canvas canvas, Size size, Paint paint) {
+//     // Ekor di bawah
+//     Path tail = Path();
+//     tail.moveTo(size.width * 0.5, size.height * 0.9);
+//     tail.quadraticBezierTo(size.width * 1.2, size.height * 1.1, size.width * 0.8, size.height * 0.7);
+//     canvas.drawPath(tail, paint);
+//     // Telinga lancip
+//     canvas.drawPath(Path()..moveTo(size.width * 0.2, size.height * 0.2)..lineTo(size.width * 0.1, 0)..lineTo(size.width * 0.4, size.height * 0.1), paint);
+//     canvas.drawPath(Path()..moveTo(size.width * 0.8, size.height * 0.2)..lineTo(size.width * 0.9, 0)..lineTo(size.width * 0.6, size.height * 0.1), paint);
+//   }
+
+//   void _drawCrown(Canvas canvas, Size size, Paint paint) {
+//     Path crown = Path();
+//     crown.moveTo(size.width * 0.3, size.height * 0.1);
+//     crown.lineTo(size.width * 0.3, -size.height * 0.1);
+//     crown.lineTo(size.width * 0.5, 0); // Tengah
+//     crown.lineTo(size.width * 0.7, -size.height * 0.1);
+//     crown.lineTo(size.width * 0.7, size.height * 0.1);
+//     canvas.drawPath(crown, paint);
+//   }
+
+//   @override
+//   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+// }

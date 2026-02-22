@@ -4,7 +4,6 @@ import 'package:app/service/badge_service.dart';
 import 'package:app/service/trade_service.dart';
 import 'package:app/service/user_badge_service.dart';
 import 'package:app/service/user_service.dart';
-import 'package:app/service/activity_service.dart';
 import 'package:app/view/whatadeal_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,15 +30,16 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   late SharedPreferences pref;
   List<UserBadge> userOwnedBadges = [];
   UserBadge? selectedBadgeToTrade;
-  String errorMessage = '';
   late Student user;
 
-  // DETEKSI KATEGORI BERDASARKAN BACKEND
-  // Avatar dideteksi dari category "AVATAR" atau title yang mengandung kata avatar
+  // LOGIKA DETEKSI KATEGORI
   bool get isAvatar => widget.trade.category == "AVATAR" || widget.trade.title.toLowerCase().contains("avatar");
   
-  // Shop item adalah item yang TIDAK butuh badge (requiredBadgeType null)
-  bool get isShopItem => widget.trade.requiredBadgeType == null || widget.trade.requiredBadgeType!.isEmpty;
+  // Deteksi apakah ini bingkai (Frame) berdasarkan nama image atau title
+  bool get isFrame => widget.trade.image.contains("Frame") || widget.trade.title.toLowerCase().contains("frame");
+
+  // Shop item adalah item yang tidak butuh badge
+  bool get isShopItem => widget.trade.requiredBadgeType == null || widget.trade.requiredBadgeType!.isEmpty || isFrame;
 
   @override
   void initState() {
@@ -50,7 +50,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
 
   Future<void> _initData() async {
     pref = await SharedPreferences.getInstance();
-    // Jika BUKAN avatar dan BUKAN shop item, baru cari badge (berarti ini Reward murni)
+    // Jika bukan avatar/frame/shop, ambil badge (untuk penukaran reward)
     if (!isAvatar && !isShopItem) {
       _fetchAvailableBadgesForTrade();
     }
@@ -64,7 +64,6 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
           userOwnedBadges = result.where((b) {
             final badgeModel = b.badge;
             if (badgeModel == null || widget.trade.requiredBadgeType == null) return false;
-            
             return !b.isPurchased && 
                    badgeModel.type.toUpperCase() == widget.trade.requiredBadgeType!.toUpperCase();
           }).toList();
@@ -76,20 +75,23 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   }
 
   int _calculateReqPoint() {
-    // SINKRONISASI DENGAN BACKEND purchaseAvatar prices
+    // 1. Harga Avatar (Sesuai Controller Backend)
     if (isAvatar) {
-      int avatarId = widget.trade.id;
-      // Map harga sesuai controller backend: { 1:0, 2:100, 3:100, 4:100, 5:200, ... }
       final Map<int, int> prices = { 1: 0, 2: 100, 3: 100, 4: 100, 5: 200, 6: 200, 7: 250, 8: 250, 9: 300, 10: 300, 11: 350, 12: 350 };
-      return prices[avatarId] ?? 999;
+      return prices[widget.trade.id] ?? 500;
     }
 
-    // Jika ada harga poin di DB (untuk Frame/Shop), pakai itu
+    // 2. Harga Frame (Premium: 2500 atau sesuai DB)
+    if (isFrame) {
+      return widget.trade.priceInPoints > 0 ? widget.trade.priceInPoints : 2500;
+    }
+
+    // 3. Harga Shop Item Umum
     if (widget.trade.priceInPoints > 0) {
       return widget.trade.priceInPoints;
     }
 
-    // Untuk Reward (Berdasarkan Tipe Badge)
+    // 4. Default Reward murni (Berdasarkan Badge)
     String type = widget.trade.requiredBadgeType?.toUpperCase() ?? "";
     switch (type) {
       case 'BEGINNER': return 300;
@@ -102,14 +104,8 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   bool _isPurchaseValid() {
     int reqPoint = _calculateReqPoint();
     if ((user.points ?? 0) < reqPoint) return false;
-    
-    // Avatar tidak butuh badge
-    if (isAvatar) return true;
-
-    // Hanya item Reward non-shop yang wajib pilih badge
-    if (!isShopItem) {
-      if (selectedBadgeToTrade == null) return false;
-    }
+    if (isAvatar || isShopItem) return true;
+    if (selectedBadgeToTrade == null) return false;
     return true;
   }
 
@@ -119,22 +115,16 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
 
     try {
       bool success = false;
-
-      // Panggil service sesuai jenis item
       if (isAvatar || isShopItem) {
-        // Pembelian menggunakan poin
         success = await TradeService.buyShopItem(user.id, widget.trade.id, reqPoint);
       } else {
-        // Penukaran reward (butuh badge)
         success = await TradeService.createUserTrade(user.id, widget.trade.id);
       }
       
       if (success) {
-        // Update poin di lokal
         user.points = (user.points ?? 0) - reqPoint;
         await UserService.updateUserPoints(user);
 
-        // Jika pakai badge, tandai badge tersebut sudah terpakai
         if (!isAvatar && !isShopItem && selectedBadgeToTrade != null) {
           await UserBadgeService.updateUserBadgeStatus(selectedBadgeToTrade!.id, true);
         }
@@ -143,12 +133,12 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
         Navigator.pop(context); 
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => WhatADealScreen(message: "Sukses! ${widget.trade.title} didapatkan.")));
       } else {
-        throw Exception("Gagal memproses transaksi");
+        throw Exception("Transaksi gagal diproses.");
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
       }
     }
   }
@@ -159,7 +149,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isAvatar ? "Beli Avatar" : "Tukar Reward"),
+        title: Text(isAvatar ? "Beli Avatar" : (isFrame ? "Beli Bingkai" : "Tukar Reward")),
         backgroundColor: AppColors.primaryColor,
         foregroundColor: Colors.white,
       ),
@@ -172,14 +162,13 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.trade.title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  Text(widget.trade.title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
                   const SizedBox(height: 10),
-                  Text(widget.trade.description, style: const TextStyle(color: Colors.grey)),
+                  Text(widget.trade.description, style: const TextStyle(color: Colors.grey, fontSize: 16)),
                   
                   const SizedBox(height: 30),
                   _buildRequirementCard(reqPoint),
 
-                  // Tampilkan pemilih badge HANYA jika bukan Avatar dan bukan Shop Item
                   if (!isAvatar && !isShopItem) ...[
                     const SizedBox(height: 25),
                     const Text("Pilih Badge Koleksi Anda:", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -201,26 +190,26 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   Widget _buildRequirementCard(int reqPoint) {
     bool hasEnoughPoints = (user.points ?? 0) >= reqPoint;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white, 
-        borderRadius: BorderRadius.circular(12), 
+        borderRadius: BorderRadius.circular(15), 
         border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10)]
       ),
       child: Column(
         children: [
           Row(children: [
-            Icon(Icons.monetization_on, color: hasEnoughPoints ? Colors.green : Colors.red),
-            const SizedBox(width: 10),
-            Expanded(child: Text("Biaya: $reqPoint Poin (Miliki: ${user.points})")),
+            Icon(Icons.monetization_on, color: hasEnoughPoints ? Colors.green : Colors.red, size: 28),
+            const SizedBox(width: 12),
+            Expanded(child: Text("Harga: $reqPoint Poin\n(Poin Anda: ${user.points})", style: const TextStyle(fontWeight: FontWeight.w600))),
           ]),
-          // Syarat Badge disembunyikan jika ini adalah Avatar
           if (!isAvatar && !isShopItem) ...[
-            const Divider(height: 24),
+            const Divider(height: 30),
             Row(children: [
-              Icon(Icons.verified, color: userOwnedBadges.isNotEmpty ? Colors.green : Colors.red),
-              const SizedBox(width: 10),
-              Expanded(child: Text("Butuh 1x Badge ${widget.trade.requiredBadgeType}")),
+              Icon(Icons.verified, color: userOwnedBadges.isNotEmpty ? Colors.blue : Colors.red, size: 28),
+              const SizedBox(width: 12),
+              Expanded(child: Text("Butuh: 1x Lencana ${widget.trade.requiredBadgeType}", style: const TextStyle(fontWeight: FontWeight.w600))),
             ]),
           ]
         ],
@@ -228,21 +217,53 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
     );
   }
 
-  // Sisa fungsi UI (_buildBadgePicker, _buildRedeemButton, _buildTradeImage) tetap sama
-  // Namun _buildRedeemButton sekarang otomatis valid untuk Avatar jika poin cukup.
+  Widget _buildTradeImage() {
+    // Logika deteksi asset lokal vs internet
+    bool isLocalFrame = widget.trade.image.startsWith('Frame') || widget.trade.image.contains('lib/assets/');
+    
+    return Container(
+      height: 280, 
+      width: double.infinity, 
+      decoration: BoxDecoration(
+        color: Colors.white,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.grey.shade50, Colors.white],
+        )
+      ),
+      padding: const EdgeInsets.all(30),
+      child: Hero(
+        tag: widget.trade.id,
+        child: isLocalFrame
+            ? Image.asset(
+                widget.trade.image.startsWith('Frame') 
+                    ? 'lib/assets/Frames/${widget.trade.image}.png' 
+                    : widget.trade.image,
+                fit: BoxFit.contain,
+                errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 100, color: Colors.grey),
+              )
+            : Image.network(
+                widget.trade.image, 
+                fit: BoxFit.contain, 
+                errorBuilder: (c, e, s) => const Icon(Icons.face, size: 100, color: Colors.grey),
+              ),
+      ),
+    );
+  }
 
   Widget _buildBadgePicker() {
     if (userOwnedBadges.isEmpty) {
-      return const Text("Lencana tidak mencukupi.", style: TextStyle(color: Colors.red, fontSize: 13));
+      return const Text("Maaf, Anda tidak memiliki lencana yang sesuai untuk ditukar.", style: TextStyle(color: Colors.red, fontSize: 13));
     }
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: 10,
+      runSpacing: 10,
       children: userOwnedBadges.map((ub) {
-        final badgeName = ub.badge?.name ?? "Badge"; 
         return ChoiceChip(
-          label: Text(badgeName),
+          label: Text(ub.badge?.name ?? "Lencana"),
           selected: selectedBadgeToTrade == ub,
+          selectedColor: AppColors.primaryColor.withOpacity(0.2),
           onSelected: (val) => setState(() => selectedBadgeToTrade = val ? ub : null),
         );
       }).toList(),
@@ -253,26 +274,19 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
     bool canRedeem = !widget.trade.hasTrade && _isPurchaseValid();
     return SizedBox(
       width: double.infinity,
-      height: 50,
+      height: 55,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primaryColor, 
-          disabledBackgroundColor: Colors.grey.shade300,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+          disabledBackgroundColor: Colors.grey.shade400,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
         ),
         onPressed: canRedeem ? _processRedeem : null,
         child: Text(
-          widget.trade.hasTrade ? "TELAH DIMILIKI" : (isAvatar ? "BELI SEKARANG" : "TUKAR SEKARANG"), 
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+          widget.trade.hasTrade ? "SUDAH DIMILIKI" : (isAvatar || isFrame ? "BELI SEKARANG" : "TUKAR REWARD"), 
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
         ),
       ),
-    );
-  }
-
-  Widget _buildTradeImage() {
-    return Container(
-      height: 200, width: double.infinity, color: Colors.grey.shade100,
-      child: Image.network(widget.trade.image, fit: BoxFit.contain, errorBuilder: (c,e,s) => const Icon(Icons.face, size: 100)),
     );
   }
 }

@@ -18,6 +18,8 @@ class Student {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  int? equippedFrameId;
+
   Student({
     required this.id,
     required this.username,
@@ -35,26 +37,38 @@ class Student {
     this.image,
     required this.createdAt,
     required this.updatedAt,
+    this.equippedFrameId,
   });
 
   factory Student.fromJson(Map<String, dynamic> json) {
+    // Fungsi pembantu untuk parsing angka secara aman
+    int? parseIntSafely(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      return int.tryParse(value.toString());
+    }
+
     return Student(
-      id: json['id'],
+      id: parseIntSafely(json['id']) ?? 0,
       username: json['username'] ?? '',
       password: json['password'] ?? '',
       name: json['name'] ?? '',
       role: json['role'] ?? 'STUDENT',
       studentId: json['studentId'],
-      points: json['points'] != null ? int.parse(json['points'].toString()) : 0,
-      totalCourses: json['totalCourses'] ?? 0,
-      badges: json['badges'] ?? 0,
-      streak: json['streak'] != null ? int.parse(json['streak'].toString()) : 0,
+      points: parseIntSafely(json['points']) ?? 0,
+      totalCourses: parseIntSafely(json['totalCourses']) ?? 0,
+      badges: parseIntSafely(json['badges']) ?? 0,
+      
+      // Mengambil dari camelCase atau snake_case sesuai respon database
+      equippedFrameId: parseIntSafely(json['equippedFrameId']) ?? parseIntSafely(json['equipped_frame_id']),
+      
+      streak: parseIntSafely(json['streak']) ?? 0,
       lastInteraction: json['lastInteraction'] != null 
           ? DateTime.parse(json['lastInteraction']) 
           : null,
       image: json['image'],
       instructorId: json['instructorId'],
-      instructorCourses: json['instructorCourses'],
+      instructorCourses: parseIntSafely(json['instructorCourses']),
       createdAt: json['createdAt'] != null 
           ? DateTime.parse(json['createdAt']) 
           : DateTime.now(),
