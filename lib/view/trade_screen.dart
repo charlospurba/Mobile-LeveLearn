@@ -60,6 +60,13 @@ class _TradeScreenState extends State<TradeScreen> {
     return GlobalVar.formatImageUrl(url);
   }
 
+  // Helper Path Asset Aman untuk Release Mode
+  String _getSafeAssetPath(String imgName) {
+    if (imgName.startsWith('lib/assets')) return imgName;
+    String cleanName = imgName.replaceAll('.png', '');
+    return 'lib/assets/Frames/$cleanName.png';
+  }
+
   Future<void> _fetchUserTypeAndData() async {
     try {
       if (!mounted) return;
@@ -120,7 +127,7 @@ class _TradeScreenState extends State<TradeScreen> {
 
       if (response.statusCode == 200) {
         if (!mounted) return;
-        _showSuccessAnimation("Bingkai Berhasil Dipasang!"); // Ganti SnackBar ke Animasi
+        _showSuccessAnimation("Bingkai Berhasil Dipasang!");
         _fetchUserTypeAndData(); 
       } else {
         setState(() {
@@ -136,12 +143,19 @@ class _TradeScreenState extends State<TradeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Filter Ketat agar tidak bercampur di Tab
     final avatarItems = trades.where((t) => t.category == "AVATAR").toList();
-    final rewardTrades = trades.where((t) => t.category == "REWARD").toList();
+    
     final shopFrames = trades.where((t) => 
       t.category == "FRAME" || 
-      t.image.contains('Frame') || 
+      t.image.toLowerCase().contains('frame') || 
       t.title.toLowerCase().contains('frame')
+    ).toList();
+
+    final rewardTrades = trades.where((t) => 
+      t.category == "REWARD" && 
+      !t.image.toLowerCase().contains('frame') &&
+      !t.title.toLowerCase().contains('frame')
     ).toList();
 
     bool showRewards = userType != "Disruptors";
@@ -194,7 +208,7 @@ class _TradeScreenState extends State<TradeScreen> {
             children: [
               const Icon(Icons.stars, color: Colors.amber, size: 16),
               const SizedBox(width: 4),
-              Text("$currentPoints", style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text("$currentPoints", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
             ],
           ),
         ),
@@ -214,10 +228,6 @@ class _TradeScreenState extends State<TradeScreen> {
         final item = frames[index];
         bool canAfford = currentPoints >= item.priceInPoints;
         bool isEquipped = _localEquippedId == item.id; 
-
-        String assetPath = item.image.startsWith('Frame') 
-            ? 'lib/assets/Frames/${item.image}.png' 
-            : item.image;
 
         return Card(
           elevation: isEquipped ? 12 : 3,
@@ -242,9 +252,11 @@ class _TradeScreenState extends State<TradeScreen> {
                     ),
                     SizedBox(
                       width: 105, height: 105,
-                      child: item.image.contains('lib/assets') || item.image.startsWith('Frame')
-                          ? Image.asset(assetPath, fit: BoxFit.contain)
-                          : Image.network(formatUrl(item.image), fit: BoxFit.contain, errorBuilder: (c,e,s) => const SizedBox()),
+                      child: Image.asset(
+                        _getSafeAssetPath(item.image),
+                        fit: BoxFit.contain,
+                        errorBuilder: (c, e, s) => const Icon(Icons.broken_image, color: Colors.grey),
+                      ),
                     ),
                   ],
                 ),
@@ -306,9 +318,7 @@ class _TradeScreenState extends State<TradeScreen> {
             children: [
               Expanded(
                 child: Center(
-                  child: item.image.startsWith('lib/assets/')
-                    ? Image.asset(item.image, width: 80)
-                    : Image.network(formatUrl(item.image), width: 80),
+                  child: Image.network(formatUrl(item.image), width: 80, errorBuilder: (c,e,s) => const Icon(Icons.face)),
                 ),
               ),
               Padding(
@@ -370,7 +380,7 @@ class _TradeScreenState extends State<TradeScreen> {
               bool success = await TradeService.buyShopItem(widget.user.id, item.id, item.priceInPoints);
               if (success) {
                 if (!mounted) return;
-                _showSuccessAnimation("Berhasil Dibeli!"); // Ganti SnackBar ke Animasi
+                _showSuccessAnimation("Berhasil Dibeli!"); 
                 _fetchUserTypeAndData(); 
               }
             }, 
@@ -441,15 +451,6 @@ class _SuccessPopupState extends State<_SuccessPopup> with SingleTickerProviderS
                     ),
                   ),
                   const Icon(Icons.stars, color: Colors.amber, size: 100),
-                  ...List.generate(5, (index) {
-                    return RotationTransition(
-                      turns: _controller,
-                      child: Transform.translate(
-                        offset: Offset.fromDirection(index * 1.3, 70),
-                        child: const Icon(Icons.auto_awesome, color: Colors.white, size: 25),
-                      ),
-                    );
-                  }),
                 ],
               ),
               const SizedBox(height: 20),

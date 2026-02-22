@@ -5,6 +5,7 @@ import 'package:app/service/trade_service.dart';
 import 'package:app/service/user_badge_service.dart';
 import 'package:app/service/user_service.dart';
 import 'package:app/view/whatadeal_screen.dart';
+import 'package:app/global_var.dart'; // Tambahkan ini
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../model/user.dart';
@@ -32,13 +33,8 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   UserBadge? selectedBadgeToTrade;
   late Student user;
 
-  // LOGIKA DETEKSI KATEGORI
-  bool get isAvatar => widget.trade.category == "AVATAR" || widget.trade.title.toLowerCase().contains("avatar");
-  
-  // Deteksi apakah ini bingkai (Frame) berdasarkan nama image atau title
-  bool get isFrame => widget.trade.image.contains("Frame") || widget.trade.title.toLowerCase().contains("frame");
-
-  // Shop item adalah item yang tidak butuh badge
+  bool get isAvatar => widget.trade.category == "AVATAR";
+  bool get isFrame => widget.trade.category == "FRAME" || widget.trade.image.toLowerCase().contains('frame');
   bool get isShopItem => widget.trade.requiredBadgeType == null || widget.trade.requiredBadgeType!.isEmpty || isFrame;
 
   @override
@@ -50,7 +46,6 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
 
   Future<void> _initData() async {
     pref = await SharedPreferences.getInstance();
-    // Jika bukan avatar/frame/shop, ambil badge (untuk penukaran reward)
     if (!isAvatar && !isShopItem) {
       _fetchAvailableBadgesForTrade();
     }
@@ -75,23 +70,13 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   }
 
   int _calculateReqPoint() {
-    // 1. Harga Avatar (Sesuai Controller Backend)
     if (isAvatar) {
       final Map<int, int> prices = { 1: 0, 2: 100, 3: 100, 4: 100, 5: 200, 6: 200, 7: 250, 8: 250, 9: 300, 10: 300, 11: 350, 12: 350 };
       return prices[widget.trade.id] ?? 500;
     }
-
-    // 2. Harga Frame (Premium: 2500 atau sesuai DB)
-    if (isFrame) {
+    if (isFrame || widget.trade.priceInPoints > 0) {
       return widget.trade.priceInPoints > 0 ? widget.trade.priceInPoints : 2500;
     }
-
-    // 3. Harga Shop Item Umum
-    if (widget.trade.priceInPoints > 0) {
-      return widget.trade.priceInPoints;
-    }
-
-    // 4. Default Reward murni (Berdasarkan Badge)
     String type = widget.trade.requiredBadgeType?.toUpperCase() ?? "";
     switch (type) {
       case 'BEGINNER': return 300;
@@ -165,17 +150,14 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                   Text(widget.trade.title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
                   const SizedBox(height: 10),
                   Text(widget.trade.description, style: const TextStyle(color: Colors.grey, fontSize: 16)),
-                  
                   const SizedBox(height: 30),
                   _buildRequirementCard(reqPoint),
-
                   if (!isAvatar && !isShopItem) ...[
                     const SizedBox(height: 25),
                     const Text("Pilih Badge Koleksi Anda:", style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
                     _buildBadgePicker(),
                   ],
-
                   const SizedBox(height: 40),
                   _buildRedeemButton(),
                 ],
@@ -218,33 +200,24 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   }
 
   Widget _buildTradeImage() {
-    // Logika deteksi asset lokal vs internet
-    bool isLocalFrame = widget.trade.image.startsWith('Frame') || widget.trade.image.contains('lib/assets/');
-    
+    bool isLocalFrame = isFrame;
+    String path = widget.trade.image;
+
     return Container(
       height: 280, 
       width: double.infinity, 
-      decoration: BoxDecoration(
-        color: Colors.white,
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Colors.grey.shade50, Colors.white],
-        )
-      ),
+      color: Colors.white,
       padding: const EdgeInsets.all(30),
       child: Hero(
         tag: widget.trade.id,
         child: isLocalFrame
             ? Image.asset(
-                widget.trade.image.startsWith('Frame') 
-                    ? 'lib/assets/Frames/${widget.trade.image}.png' 
-                    : widget.trade.image,
+                path.startsWith('lib/assets') ? path : 'lib/assets/Frames/${path.replaceAll('.png', '')}.png',
                 fit: BoxFit.contain,
                 errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 100, color: Colors.grey),
               )
             : Image.network(
-                widget.trade.image, 
+                GlobalVar.formatImageUrl(path), 
                 fit: BoxFit.contain, 
                 errorBuilder: (c, e, s) => const Icon(Icons.face, size: 100, color: Colors.grey),
               ),
@@ -254,7 +227,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
 
   Widget _buildBadgePicker() {
     if (userOwnedBadges.isEmpty) {
-      return const Text("Maaf, Anda tidak memiliki lencana yang sesuai untuk ditukar.", style: TextStyle(color: Colors.red, fontSize: 13));
+      return const Text("Maaf, Anda tidak memiliki lencana yang sesuai.", style: TextStyle(color: Colors.red, fontSize: 13));
     }
     return Wrap(
       spacing: 10,
