@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:app/model/user.dart';
 import 'package:app/model/user_challenge.dart';
@@ -48,6 +47,7 @@ class _HomeState extends State<Homescreen> {
   List<UserBadge>? userBadges = [];
   int streakDays = 0;
   String userType = "Disruptors";
+  String? currentFrameDesignId; // Field baru untuk menyimpan ID Bingkai
 
   @override
   void initState() {
@@ -60,24 +60,21 @@ class _HomeState extends State<Homescreen> {
     setState(() => isLoading = true);
 
     try {
-      // 1. Ambil data User dari SP & Backend terlebih dahulu (Krusial)
       await getUserFromSharedPreference();
       
       if (idUser != 0) {
-        // 2. Jalankan Cluster AI dan Data lainnya secara PARALEL
-        // Data krusial (Course/User) tidak menunggu Cluster AI yang lama
         await Future.wait([
-          fetchAdaptiveProfile(), // AI Profile
+          fetchAdaptiveProfile(), 
+          fetchEquippedFrame(), // Ambil data bingkai yang sedang dipakai
           handleStreakInteraction(),
           getAllUser(),
           getEnrolledCourse(),
           fetchChallenges(),
         ]).catchError((err) {
-          debugPrint("Beberapa data gagal dimuat, tapi tetap lanjut: $err");
+          debugPrint("Beberapa data gagal dimuat: $err");
           return [];
         });
 
-        // 3. Catat log akses di background (tidak perlu await)
         ActivityService.sendLog(
           userId: idUser, 
           type: 'FREQUENT_ACCESS', 
@@ -91,13 +88,27 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
+  // Ambil desain bingkai dari database
+  Future<void> fetchEquippedFrame() async {
+    try {
+      final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/usertrade/equipped/$idUser"));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted && data != null && data['trade'] != null) {
+          setState(() => currentFrameDesignId = data['trade']['image']?.toString());
+        } else {
+          setState(() => currentFrameDesignId = null);
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal fetch bingkai di Home: $e");
+    }
+  }
+
   Future<void> fetchAdaptiveProfile() async {
-    // URL mengarah ke Node.js API
     final String url = "${GlobalVar.baseUrl}/api/user/adaptive/$idUser";
     try {
-      // NAIKKAN TIMEOUT: AI GMM butuh waktu lebih lama (30 detik)
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
-      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
@@ -107,12 +118,9 @@ class _HomeState extends State<Homescreen> {
         }
       }
     } catch (e) {
-      // Jika AI GMM gagal/timeout, jangan buat aplikasi stuck
-      debugPrint("Adaptive AI Fetch Gagal/Timeout: $e");
+      debugPrint("Adaptive AI Fetch Gagal: $e");
     }
   }
-
-  // --- REUSABLE SERVICES ---
 
   Future<void> fetchChallenges() async {
     if (idUser == 0) return;
@@ -195,7 +203,6 @@ class _HomeState extends State<Homescreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Cluster UI Config
     Color clusterColor = Colors.redAccent; 
     IconData clusterIcon = Icons.bolt;
 
@@ -230,7 +237,6 @@ class _HomeState extends State<Homescreen> {
                           const SizedBox(height: 50),
                           _buildProfileHeader(clusterColor, clusterIcon),
                           _buildAdaptiveGreeting(clusterColor, clusterIcon), 
-                          
                           _buildStatsDashboard(),
 
                           if (userType == "Achievers" || userType == "Free Spirits")
@@ -260,8 +266,7 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
-  // --- UI WIDGETS ---
-
+  // IMPLEMENTASI LAYERING BINGKAI PADA HEADER
   Widget _buildProfileHeader(Color clusterColor, IconData clusterIcon) {
     String? img = user?.image;
     return Padding(
@@ -295,24 +300,55 @@ class _HomeState extends State<Homescreen> {
               ],
             ),
           ),
+          
+          // --- BAGIAN LAYERING BINGKAI ---
           GestureDetector(
             onTap: () => widget.updateIndex(4),
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)]
-              ),
-              child: CircleAvatar(
-                radius: 30, 
-                backgroundColor: Colors.grey[200], 
-                backgroundImage: img != null && img.isNotEmpty 
-                  ? (img.startsWith('lib/assets/') 
-                      ? AssetImage(img) as ImageProvider
-                      : NetworkImage(GlobalVar.formatImageUrl(img))) 
-                  : null, 
-                child: (img == null || img.isEmpty) ? const Icon(Icons.person, size: 30) : null
-              ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Layer 1: Foto Profil Dasar
+                Container(
+                  width: 65,
+                  height: 65,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
+                    color: Colors.grey[200],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(100),
+                    child: (img != null && img.isNotEmpty) 
+                      ? (img.startsWith('lib/assets/') 
+                          ? Image.asset(img, fit: BoxFit.cover)
+                          : Image.network(GlobalVar.formatImageUrl(img), fit: BoxFit.cover))
+                      : const Icon(Icons.person, size: 30, color: Colors.grey),
+                  ),
+                ),
+                
+                // Layer 2: Bingkai PNG (Jika Ada)
+                if (currentFrameDesignId != null && currentFrameDesignId != "null")
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0.8, end: 1.0),
+                    duration: const Duration(milliseconds: 600),
+                    curve: Curves.elasticOut,
+                    builder: (context, scale, child) {
+                      return Transform.scale(
+                        scale: scale,
+                        child: SizedBox(
+                          width: 90, // Ukuran bingkai lebih besar dari foto (65 vs 90)
+                          height: 90,
+                          child: Image.asset(
+                            'lib/assets/Frames/$currentFrameDesignId.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                          ),
+                        ),
+                      );
+                    }
+                  ),
+              ],
             ),
           ),
         ],
