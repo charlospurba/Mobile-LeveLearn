@@ -90,11 +90,11 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
     }
 
     // Untuk REWARD yang butuh lencana
-    String type = widget.trade.requiredBadgeType?.toUpperCase() ?? "";
+   String type = widget.trade.requiredBadgeType?.toUpperCase() ?? "";
     switch (type) {
-      case 'BEGINNER': return 300;
-      case 'INTERMEDIATE': return 500;
-      case 'ADVANCE': return 800;
+      case 'BEGINNER': return 2000;
+      case 'INTERMEDIATE': return 4000;
+      case 'ADVANCE': return 6000;
       default: return widget.trade.priceInPoints;
     }
   }
