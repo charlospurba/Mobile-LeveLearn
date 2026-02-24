@@ -121,14 +121,17 @@ class _CourseDetail extends State<CourseDetailScreen> {
     }
   }
 
-  int idOfBadge(int isCheckpoint) {
-    if (listBadge == null) return 0;
+  // --- PERBAIKAN FUNGSI idOfBadge ---
+  // Sekarang mencari berdasarkan chapterId agar spesifik
+  int idOfBadge(int chapterId) {
+    if (listBadge == null || listBadge!.isEmpty) return 0;
     try {
-      if (isCheckpoint == 1) return listBadge!.firstWhere((i) => i.type == 'BEGINNER').id;
-      if (isCheckpoint == 2) return listBadge!.firstWhere((i) => i.type == 'INTERMEDIATE').id;
-      if (isCheckpoint == 3) return listBadge!.firstWhere((i) => i.type == 'ADVANCE').id;
-    } catch (_) { return 0; }
-    return 0;
+      // Mencari badge yang terhubung dengan ID chapter yang sedang dibuka
+      final badge = listBadge!.firstWhere((i) => i.chapterId == chapterId);
+      return badge.id;
+    } catch (_) { 
+      return 0; // Kembalikan 0 jika chapter ini tidak punya badge
+    }
   }
 
   @override
@@ -263,14 +266,10 @@ class _CourseDetail extends State<CourseDetailScreen> {
   Widget _decideChapterItem(int index) {
     if (uc == null) return const SizedBox();
     
-    // --- LOGIKA ADAPTIF BERDASARKAN CLUSTER ---
-    
-    // Profil non-Disruptors mendapatkan akses terbuka (Open Exploration)
     if (userType == "Players" || userType == "Achievers" || userType == "Free Spirits") {
         return _buildCourseItem(index);
     }
 
-    // Profil Disruptors menggunakan logika Sekuensial ketat (Locking System)
     bool isUnlockedByLevel = index <= uc!.currentChapter - 1;
 
     if (isUnlockedByLevel) {
@@ -320,7 +319,9 @@ class _CourseDetail extends State<CourseDetailScreen> {
                         chLength: listChapter.length,
                         user: user!,
                         chapterName: chapter.name,
-                        idBadge: idOfBadge(chapter.isCheckpoint),
+                        // --- PERBAIKAN PEMANGGILAN ---
+                        // Mengirim chapter.id agar idOfBadge bisa mencari badge yang tepat
+                        idBadge: idOfBadge(chapter.id), 
                         level: chapter.level,
                         updateProgress: (val) async {
                            await _initialLoad();

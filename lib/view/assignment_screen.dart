@@ -6,6 +6,7 @@ import 'package:app/model/user_course.dart';
 import 'package:app/service/chapter_service.dart';
 import 'package:app/service/user_chapter_service.dart';
 import 'package:app/service/activity_service.dart';
+import 'package:app/service/user_badge_service.dart'; 
 import 'package:app/utils/colors.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:file_picker/file_picker.dart';
@@ -84,10 +85,10 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     try {
       debugPrint("--- Memulai Proses Submit ---");
 
-      // 1. Log Aktivitas ke Backend (Penting untuk analisis GMM Disruptors)
+      // 1. Log Aktivitas ke Backend
       await ActivityService.sendLog(
         userId: widget.user.id,
-        type: 'COMPLETION', // Diganti ke COMPLETION untuk akurasi data log
+        type: 'COMPLETION', 
         value: 1.0,
         metadata: {"chapterId": status.chapterId, "type": "ASSIGNMENT"},
       ).timeout(const Duration(seconds: 5), onTimeout: () {
@@ -126,21 +127,36 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
 
       if (success) {
         debugPrint("Backend Sync Berhasil.");
+
+        // --- LOGIKA KLAIM BADGE (HANYA SUBMIT PERTAMA) ---
+        // Syarat: idBadge ada DAN assignmentDone masih false (belum pernah submit sukses sebelumnya)
+        if (widget.idBadge != 0 && status.assignmentDone == false) {
+          debugPrint(">>> [BADGE SYSTEM] Submisi pertama! Klaim Badge ID: ${widget.idBadge}");
+          try {
+            await UserBadgeService.createUserBadge(
+              userId: widget.user.id,
+              badgeId: widget.idBadge,
+            );
+            debugPrint(">>> [BADGE SYSTEM] Sukses klaim badge.");
+          } catch (e) {
+            debugPrint(">>> [BADGE SYSTEM] Gagal klaim (mungkin duplikat): $e");
+          }
+        } else if (widget.idBadge != 0 && status.assignmentDone == true) {
+          debugPrint(">>> [BADGE SYSTEM] Re-submit terdeteksi. Skip pemberian badge.");
+        }
         
-        // OPTIMISTIC UPDATE: Tandai selesai di lokal HP
+        // OPTIMISTIC UPDATE: Update status UI secara instan
         if (mounted) {
           setState(() {
             status.submissionHistory.insert(0, publicUrl); 
             status.assignmentDone = true;
-            status.isCompleted = true; // Menandai chapter selesai secara eksplisit
+            status.isCompleted = true; 
           });
         }
 
-        // --- FIX: TRIGGER PEMBUKAAN CHAPTER BERIKUTNYA ---
-        // Parameter 'true' memicu fungsi update progres kursus secara keseluruhan
+        // Trigger buka chapter selanjutnya
         await widget.updateProgress(true); 
 
-        // Beri jeda sinkronisasi database backend
         await Future.delayed(const Duration(milliseconds: 1000));
 
         // 6. RE-FETCH: Ambil status resmi terbaru dari DB
@@ -172,7 +188,6 @@ class _AssignmentScreenState extends State<AssignmentScreen> {
     }
   }
 
-  // --- UI WIDGETS ---
   @override
   Widget build(BuildContext context) {
     return Container(

@@ -78,10 +78,8 @@ class _CourseDetail extends State<MycourseScreen> {
     }
   }
 
-  // Fungsi untuk mengunduh sertifikat melalui backend
   Future<void> _downloadCertificate(int courseId) async {
     int? userId = pref.getInt('userId');
-    // Membangun URL endpoint sertifikat: /api/certificate/:userId/:courseId
     final String certificateUrl = "${GlobalVar.baseUrl}/api/certificate/$userId/$courseId";
     
     final Uri url = Uri.parse(certificateUrl);
@@ -342,17 +340,37 @@ class _CourseDetail extends State<MycourseScreen> {
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: () => _downloadCertificate(course.id),
+                      onPressed: course.isAllAssignmentsGraded 
+                          ? () => _downloadCertificate(course.id)
+                          : () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Sertifikat belum tersedia. Menunggu tugas dinilai instruktur."),
+                                  backgroundColor: Colors.orange,
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.accentColor,
-                        foregroundColor: AppColors.primaryColor,
+                        backgroundColor: course.isAllAssignmentsGraded 
+                            ? AppColors.accentColor 
+                            : Colors.grey[400],
+                        foregroundColor: course.isAllAssignmentsGraded 
+                            ? AppColors.primaryColor 
+                            : Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: const Icon(Icons.workspace_premium),
-                      label: const Text(
-                        "Download Certificate",
-                        style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'),
+                      icon: Icon(
+                        course.isAllAssignmentsGraded 
+                            ? Icons.workspace_premium 
+                            : Icons.pending_actions
+                      ),
+                      label: Text(
+                        course.isAllAssignmentsGraded 
+                            ? "Download Certificate" 
+                            : "Menunggu Penilaian",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded'),
                       ),
                     ),
                   ),

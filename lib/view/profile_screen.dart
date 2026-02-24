@@ -135,7 +135,6 @@ class _ProfileState extends State<ProfileScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted && data != null && data['trade'] != null) {
-          // Mengambil nama file (misal Frame1) dari database image field
           setState(() => currentFrameDesignId = data['trade']['image']?.toString());
         } else {
           setState(() => currentFrameDesignId = null);
@@ -169,6 +168,39 @@ class _ProfileState extends State<ProfileScreen> {
     if (mounted) {
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
     }
+  }
+
+  // --- HELPER FUNGSI BARU UNTUK RENDER GAMBAR BADGE YANG AMAN ---
+  Widget _buildSafeBadgeImage(String? rawUrl, {double size = 60}) {
+    if (rawUrl == null || rawUrl.isEmpty) {
+      return Image.asset('lib/assets/pictures/icon.png', width: size, height: size, fit: BoxFit.cover);
+    } 
+    
+    // Jika URL adalah link Supabase (http/https), langsung gunakan Network
+    if (rawUrl.startsWith('http')) {
+      return Image.network(
+        rawUrl, 
+        width: size, 
+        height: size, 
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: size, height: size),
+      );
+    } 
+    
+    // Jika dari local asset frontend
+    if (rawUrl.startsWith('lib/assets/')) {
+      return Image.asset(rawUrl, width: size, height: size, fit: BoxFit.cover);
+    }
+
+    // Fallback ke format URL backend lama
+    String fixUrl = formatUrl(rawUrl.replaceAll("badges//", "badges/"));
+    return Image.network(
+      fixUrl, 
+      width: size, 
+      height: size, 
+      fit: BoxFit.cover,
+      errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: size, height: size),
+    );
   }
 
   @override
@@ -273,9 +305,8 @@ class _ProfileState extends State<ProfileScreen> {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // FOTO PROFIL (Lingkaran Dasar)
         Container(
-          width: 100, // Sedikit lebih kecil agar bingkai membungkus di luar
+          width: 100, 
           height: 100,
           decoration: BoxDecoration(
             shape: BoxShape.circle, 
@@ -294,7 +325,6 @@ class _ProfileState extends State<ProfileScreen> {
           ),
         ),
 
-        // BINGKAI ASSET PNG (Lapisan Atas)
         if (currentFrameDesignId != null && currentFrameDesignId != "null")
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0.8, end: 1.0),
@@ -304,7 +334,7 @@ class _ProfileState extends State<ProfileScreen> {
               return Transform.scale(
                 scale: scale,
                 child: SizedBox(
-                  width: 145, // Ukuran bingkai lebih besar dari foto
+                  width: 145,
                   height: 145,
                   child: Image.asset(
                     'lib/assets/Frames/$currentFrameDesignId.png',
@@ -316,7 +346,6 @@ class _ProfileState extends State<ProfileScreen> {
             }
           ),
 
-        // TOMBOL PENCIL (Edit)
         Positioned(
           bottom: 5,
           right: 5,
@@ -357,14 +386,15 @@ class _ProfileState extends State<ProfileScreen> {
                     itemBuilder: (context, index) {
                       final badge = userBadges![index].badge;
                       if (badge == null) return const SizedBox();
-                      String fixUrl = formatUrl(badge.image?.replaceAll("badges//", "badges/"));
+                      
                       return GestureDetector(
                         onTap: () => _showBadgeDetails(context, badge),
                         child: Padding(
                           padding: const EdgeInsets.only(right: 12),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: fixUrl.startsWith('lib/assets/') ? Image.asset(fixUrl, width: 60, height: 60) : Image.network(fixUrl, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: 60)),
+                            // PANGGIL FUNGSI SAFE BUILDER DISINI
+                            child: _buildSafeBadgeImage(badge.image, size: 60),
                           ),
                         ),
                       );
@@ -409,6 +439,7 @@ class _ProfileState extends State<ProfileScreen> {
       Course resCourse = await CourseService.getCourse(badge.courseId);
       Chapter resChapter = await ChapterService.getChapterById(badge.chapterId);
       if (!mounted) return;
+      
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -417,7 +448,11 @@ class _ProfileState extends State<ProfileScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(borderRadius: BorderRadius.circular(16), child: badge.image != null ? (badge.image!.startsWith('lib/assets/') ? Image.asset(badge.image!, height: 100) : Image.network(formatUrl(badge.image!), fit: BoxFit.cover, height: 100)) : Image.asset('lib/assets/pictures/icon.png', height: 100)),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16), 
+                // PANGGIL FUNGSI SAFE BUILDER DISINI
+                child: _buildSafeBadgeImage(badge.image, size: 100)
+              ),
               const SizedBox(height: 16),
               Text(badge.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor, fontSize: 18)),
               Text('(${badge.type})', style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),

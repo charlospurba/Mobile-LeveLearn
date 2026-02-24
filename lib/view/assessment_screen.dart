@@ -112,6 +112,14 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
 
   void getAssessment(int id) async {
     final resultAssessment = await ChapterService.getAssessmentByChapterId(id);
+    
+    // DEBUGGING: Cek apakah data teks soal dari Backend memang terpotong
+    if (resultAssessment != null && resultAssessment.questions.isNotEmpty) {
+      for (int i = 0; i < resultAssessment.questions.length; i++) {
+        debugPrint(">>> [DEBUG API] Teks Soal ${i + 1}: ${resultAssessment.questions[i].question} <<<");
+      }
+    }
+
     if (mounted) {
       setState(() {
         question = resultAssessment;
@@ -221,7 +229,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // KONDISI SELESAI: Menampilkan hasil untuk SEMUA profil
     if (widget.status.assessmentDone || _assessmentFinished) {
       return _buildQuizResult();
     }
@@ -378,8 +385,12 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
               boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4))]),
-          child: Text("Soal ${number + 1}:\n${q.question}",
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, height: 1.5)),
+          child: Text(
+            "Soal ${number + 1}:\n${q.question}",
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, height: 1.5),
+            softWrap: true, // PERBAIKAN: Memastikan teks otomatis turun baris
+            overflow: TextOverflow.visible, // PERBAIKAN: Memastikan teks tidak disembunyikan
+          ),
         ),
         const SizedBox(height: 25),
         if (q.type == 'EY')
@@ -417,7 +428,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   }
 
   Widget _buildQuizResult() {
-    // HAPUS pengecekan isDisruptor di sini agar review muncul untuk semua profil
     return SingleChildScrollView(
       child: Column(children: [
         const SizedBox(height: 60),

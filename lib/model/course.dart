@@ -7,6 +7,7 @@ class Course {
   final String image;
   String? description;
   int? progress = 0;
+  bool isAllAssignmentsGraded; // Properti baru untuk validasi sertifikat
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -17,6 +18,7 @@ class Course {
     required this.image,
     this.description,
     this.progress,
+    this.isAllAssignmentsGraded = true, // Default true agar mencegah error null
     required this.createdAt,
     required this.updatedAt
   });
@@ -28,6 +30,7 @@ class Course {
       courseName: json['course']['name'],
       image: json['course']['image'] ?? '',
       description: json['course']['description'],
+      isAllAssignmentsGraded: json['course']['isAllAssignmentsGraded'] ?? true, // Mapping JSON dari backend
       createdAt: DateTime.parse(json['course']['createdAt']),
       updatedAt: DateTime.parse(json['course']['updatedAt']),
       progress: json['progress']
