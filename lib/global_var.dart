@@ -15,7 +15,7 @@ class GlobalVar {
     return 'http://$serverIp:$port';
   }
 
-  static String similiarityEssayUrl = 'http://$serverIp:8081/evaluate/'; 
+  static String similiarityEssayUrl = 'http://$serverIp:8002/evaluate/'; 
 
   static String formatImageUrl(String? url) {
     if (url == null || url.isEmpty) return "";

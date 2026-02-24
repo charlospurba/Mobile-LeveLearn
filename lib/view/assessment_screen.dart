@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:line_awesome_flutter/line_awesome_flutter.dart';
 
+import '../global_var.dart';
 import '../model/assessment.dart';
 import '../model/chapter_status.dart';
 import '../model/user.dart';
@@ -76,7 +79,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   void _startTimer() {
     _timer?.cancel();
     if (question != null && question!.questions.isNotEmpty) {
-      // Aturan waktu tetap berbeda untuk Disruptors (Game Element: Time Pressure)
       if (widget.userType == "Disruptors") {
         _secondsRemaining = (question!.questions[_currentPage].type == 'EY') ? 40 : 15;
       } else {
@@ -113,7 +115,6 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   void getAssessment(int id) async {
     final resultAssessment = await ChapterService.getAssessmentByChapterId(id);
     
-    // DEBUGGING: Cek apakah data teks soal dari Backend memang terpotong
     if (resultAssessment != null && resultAssessment.questions.isNotEmpty) {
       for (int i = 0; i < resultAssessment.questions.length; i++) {
         debugPrint(">>> [DEBUG API] Teks Soal ${i + 1}: ${resultAssessment.questions[i].question} <<<");
@@ -182,13 +183,61 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
 
     for (int index = 0; index < (question?.questions.length ?? 0); index++) {
       Question q = question!.questions[index];
-      String userAns = q.selectedAnswer.toString().trim().toLowerCase();
-      String correctAns = q.correctedAnswer.toString().trim().toLowerCase();
 
-      if (userAns == correctAns) {
-        tempCorrect++;
-        totalScoreCalculated += rangeScore;
-        question!.questions[index].isCorrect = true;
+      // JIKA SOAL ESSAY
+      if (q.type == 'EY') {
+        try {
+          final response = await http.post(
+            Uri.parse(GlobalVar.similiarityEssayUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              "reference": q.correctedAnswer.toString().trim(),
+              "essay": q.selectedAnswer.toString().trim(),
+            }),
+          );
+
+          if (response.statusCode == 200) {
+            final responseData = jsonDecode(response.body);
+            
+            // PENTING: Sesuaikan 'similarity_score' dengan key kembalian dari FastAPI Anda
+            // Misalnya jika FastAPI mengembalikan {"score": 0.85}, ganti menjadi responseData['score']
+            double similarityScore = (responseData['similarity_score'] ?? responseData['score'] ?? 0.0).toDouble(); 
+            
+            // Jika API mengembalikan nilai 0-100, ubah ke persentase desimal (0.0 - 1.0)
+            if (similarityScore > 1.0) {
+              similarityScore /= 100;
+            }
+            
+            totalScoreCalculated += (rangeScore * similarityScore);
+
+            // Ambang batas kemiripan (threshold) diset 70% (0.7) untuk dianggap "Benar"
+            if (similarityScore >= 0.7) {
+              tempCorrect++;
+              question!.questions[index].isCorrect = true;
+            } else {
+              question!.questions[index].isCorrect = false;
+            }
+          } else {
+            debugPrint(">>> Gagal memanggil API Essay. Status: ${response.statusCode} <<<");
+            question!.questions[index].isCorrect = false;
+          }
+        } catch (e) {
+          debugPrint(">>> ERROR API ESSAY: $e <<<");
+          question!.questions[index].isCorrect = false;
+        }
+      } 
+      // JIKA SOAL PILIHAN GANDA
+      else {
+        String userAns = q.selectedAnswer.toString().trim().toLowerCase();
+        String correctAns = q.correctedAnswer.toString().trim().toLowerCase();
+
+        if (userAns == correctAns) {
+          tempCorrect++;
+          totalScoreCalculated += rangeScore;
+          question!.questions[index].isCorrect = true;
+        } else {
+          question!.questions[index].isCorrect = false;
+        }
       }
     }
 
@@ -209,7 +258,7 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
       ]);
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context); // Menutup dialog loading
         setState(() {
           point = finalScore;
           correctAnswer = tempCorrect;
@@ -258,7 +307,7 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
                         minHeight: 10,
                         value: (_currentPage + 1) / (totalQuestions > 0 ? totalQuestions : 1),
                         backgroundColor: Colors.grey.shade300,
-                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
+                        valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryColor)),
                   ),
                   const SizedBox(height: 12),
                   if (isDisruptor)
@@ -388,8 +437,8 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
           child: Text(
             "Soal ${number + 1}:\n${q.question}",
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, height: 1.5),
-            softWrap: true, // PERBAIKAN: Memastikan teks otomatis turun baris
-            overflow: TextOverflow.visible, // PERBAIKAN: Memastikan teks tidak disembunyikan
+            softWrap: true,
+            overflow: TextOverflow.visible,
           ),
         ),
         const SizedBox(height: 25),
@@ -462,7 +511,8 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
 
   Widget _buildReviewCard(int number) {
     final q = question!.questions[number];
-    final bool isCorrect = q.selectedAnswer.toString().trim().toLowerCase() == q.correctedAnswer.toString().trim().toLowerCase();
+    final bool isCorrect = q.isCorrect ?? false; // Menggunakan status isCorrect dari perhitungan API/Pilihan Ganda
+    
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: isCorrect ? Colors.green : Colors.red, width: 2)),
