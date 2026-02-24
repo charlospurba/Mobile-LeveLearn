@@ -41,7 +41,6 @@ class Student {
   });
 
   factory Student.fromJson(Map<String, dynamic> json) {
-    // Fungsi pembantu untuk parsing angka secara aman
     int? parseIntSafely(dynamic value) {
       if (value == null) return null;
       if (value is int) return value;
@@ -58,10 +57,7 @@ class Student {
       points: parseIntSafely(json['points']) ?? 0,
       totalCourses: parseIntSafely(json['totalCourses']) ?? 0,
       badges: parseIntSafely(json['badges']) ?? 0,
-      
-      // Mengambil dari camelCase atau snake_case sesuai respon database
       equippedFrameId: parseIntSafely(json['equippedFrameId']) ?? parseIntSafely(json['equipped_frame_id']),
-      
       streak: parseIntSafely(json['streak']) ?? 0,
       lastInteraction: json['lastInteraction'] != null 
           ? DateTime.parse(json['lastInteraction']) 
@@ -76,5 +72,39 @@ class Student {
           ? DateTime.parse(json['updatedAt']) 
           : DateTime.now(),
     );
+  }
+
+  // --- FUNGSI INI WAJIB ADA AGAR PASSWORD DIKIRIM KE BACKEND ---
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = <String, dynamic>{};
+    
+    data['id'] = id;
+    data['username'] = username;
+    data['name'] = name;
+    data['role'] = role;
+    data['streak'] = streak;
+    
+    // Pastikan password masuk payload HANYA jika form diisi
+    if (password.isNotEmpty) {
+      data['password'] = password;
+    }
+
+    if (studentId != null) data['studentId'] = studentId;
+    if (points != null) data['points'] = points;
+    if (totalCourses != null) data['totalCourses'] = totalCourses;
+    if (badges != null) data['badges'] = badges;
+    if (instructorId != null) data['instructorId'] = instructorId;
+    if (instructorCourses != null) data['instructorCourses'] = instructorCourses;
+    if (image != null) data['image'] = image;
+    if (equippedFrameId != null) data['equippedFrameId'] = equippedFrameId;
+    
+    if (lastInteraction != null) {
+      data['lastInteraction'] = lastInteraction!.toIso8601String();
+    }
+    
+    data['createdAt'] = createdAt.toIso8601String();
+    data['updatedAt'] = updatedAt.toIso8601String();
+
+    return data;
   }
 }

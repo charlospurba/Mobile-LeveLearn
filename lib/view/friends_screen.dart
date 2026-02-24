@@ -1,3 +1,7 @@
+import 'dart:convert'; // Tambahan untuk jsonDecode
+import 'package:http/http.dart' as http; // Tambahan untuk fetch API
+import 'package:app/global_var.dart'; // Tambahan untuk GlobalVar.baseUrl
+
 import 'package:app/service/user_service.dart';
 import 'package:app/utils/colors.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +23,9 @@ class FriendsScreen extends StatefulWidget {
 class _FriendsScreen extends State<FriendsScreen> {
   List<Student> user = [];
   bool _isFloating = false; // Untuk mentrigger loop animasi
+  
+  // === TAMBAHAN: Map untuk menyimpan Frame ID masing-masing pengguna ===
+  Map<int, String> userFrames = {};
 
   List<Student> sortUserbyPoint(List<Student> list) {
     list.sort((a, b) => b.points!.compareTo(a.points!));
@@ -35,6 +42,34 @@ class _FriendsScreen extends State<FriendsScreen> {
       setState(() {
         user = sortUserbyPoint(studentRole(result));
       });
+      // Fetch frames untuk setiap user setelah daftar didapatkan
+      _fetchFramesForUsers(user);
+    }
+  }
+
+  // === TAMBAHAN: Fungsi untuk melooping dan mengambil frame setiap user ===
+  void _fetchFramesForUsers(List<Student> users) {
+    for (var student in users) {
+      if (student.id != null) {
+        _fetchEquippedFrame(student.id!);
+      }
+    }
+  }
+
+  // === TAMBAHAN: HTTP GET untuk mengambil frame spesifik milik user ===
+  Future<void> _fetchEquippedFrame(int userId) async {
+    try {
+      final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/usertrade/equipped/$userId"));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted && data != null && data['trade'] != null) {
+          setState(() {
+            userFrames[userId] = data['trade']['image']?.toString() ?? "";
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal fetch bingkai untuk user $userId: $e");
     }
   }
 
@@ -42,7 +77,6 @@ class _FriendsScreen extends State<FriendsScreen> {
   void initState() {
     super.initState();
     getAllUser();
-    // Start floating animation loop after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       setState(() => _isFloating = true);
     });
@@ -54,7 +88,6 @@ class _FriendsScreen extends State<FriendsScreen> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Background Premium (Deep Gradient + Patterns)
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -65,7 +98,6 @@ class _FriendsScreen extends State<FriendsScreen> {
               ),
             ),
           ),
-          // Decorative Circles for Depth
           Positioned(
             top: 200, left: -50,
             child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.03))),
@@ -74,7 +106,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             top: 400, right: -80,
             child: Container(width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.02))),
           ),
-          // Background Pattern Overlay
           Positioned.fill(
             child: Opacity(
               opacity: 0.1,
@@ -85,13 +116,11 @@ class _FriendsScreen extends State<FriendsScreen> {
             physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
             slivers: [
               _buildSliverAppBar(),
-              
-              // Podium Section (Dikemas dalam SliverToBoxAdapter)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 40, bottom: 10),
                   child: SizedBox(
-                    height: 280, // Ditingkatkan dari 220 ke 280 untuk mencegah overflow
+                    height: 280,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -104,8 +133,6 @@ class _FriendsScreen extends State<FriendsScreen> {
                   ),
                 ),
               ),
-
-              // White Panel containing the Friends List
               SliverToBoxAdapter(
                 child: Container(
                   constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height * 0.5),
@@ -128,7 +155,7 @@ class _FriendsScreen extends State<FriendsScreen> {
                       const SizedBox(height: 20),
                       _buildAttractiveSectionHeader(),
                       const SizedBox(height: 15),
-                      _buildAttractiveFriendsList(), // ListView dibungkus dalam Container agar tidak konflik dalam Sliver
+                      _buildAttractiveFriendsList(),
                       const SizedBox(height: 30),
                     ],
                   ),
@@ -172,8 +199,8 @@ class _FriendsScreen extends State<FriendsScreen> {
                         ]
                       )
                   ),
-                  const SizedBox(height: 8),
-                  const Padding(
+                  SizedBox(height: 8),
+                  Padding(
                     padding: EdgeInsets.symmetric(horizontal: 40),
                     child: Text('KOMPETISI PROGRES AKADEMIK MINGGUAN',
                         textAlign: TextAlign.center,
@@ -198,11 +225,10 @@ class _FriendsScreen extends State<FriendsScreen> {
 
   Widget _buildAttractivePodiumItem(List<Student> list, int index, String bannerPath, Color color) {
     final student = list.isNotEmpty && list.length > index ? list[index] : null;
-    final heights = [90, 75, 60]; // Tinggi diperbesar sedikit agar lebih elegan
+    final heights = [90, 75, 60];
     final height = heights[index];
     final isFirst = index == 0;
     
-    // Flexible HARUS berada di tingkat paling atas jika menjadi child dari Row
     return Flexible(
       child: TweenAnimationBuilder<double>(
         duration: Duration(milliseconds: 800 + (index * 200)),
@@ -215,7 +241,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             curve: Curves.easeInOutSine,
             onEnd: () => setState(() => _isFloating = !_isFloating),
             builder: (context, floatValue, child) {
-              // Efek Mengambang (Floating) yang halus
               double offset = (index == 0 ? 12.0 : 8.0) * (floatValue - 0.5) * 2;
               return Transform.translate(
                 offset: Offset(0, -20 * (1 - entryValue) + (entryValue == 1.0 ? offset : 0)),
@@ -235,12 +260,11 @@ class _FriendsScreen extends State<FriendsScreen> {
           mainAxisAlignment: MainAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Avatar dengan Ring Bercahaya untuk Juara 1
             Stack(
-              clipBehavior: Clip.none, // Mencegah mahkota terpotong
+              clipBehavior: Clip.none, 
               alignment: Alignment.center,
               children: [
-                if (isFirst) // Efek Glow untuk Juara 1
+                if (isFirst)
                   TweenAnimationBuilder<double>(
                     duration: const Duration(seconds: 2),
                     tween: Tween<double>(begin: 0.0, end: 1.0),
@@ -285,11 +309,21 @@ class _FriendsScreen extends State<FriendsScreen> {
                     ),
                   ),
                 ),
+                // === TAMBAHAN: Render Frame Podium ===
+                if (student != null && student.id != null && userFrames.containsKey(student.id) && userFrames[student.id]!.isNotEmpty)
+                  SizedBox(
+                    width: isFirst ? 92 : 80, // Ukuran dinamis agar proporsional dengan avatar
+                    height: isFirst ? 92 : 80,
+                    child: Image.asset(
+                      'lib/assets/Frames/${userFrames[student.id]}.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 8),
             
-            // Nama Tag
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
@@ -314,7 +348,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             ),
             const SizedBox(height: 4),
             
-            // Poin Chip
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -341,7 +374,6 @@ class _FriendsScreen extends State<FriendsScreen> {
             ),
             const SizedBox(height: 10),
             
-            // Banner Podium
             Container(
               width: isFirst ? 75 : 65,
               height: height.toDouble(),
@@ -359,7 +391,7 @@ class _FriendsScreen extends State<FriendsScreen> {
                     index == 0 ? '1' : index == 1 ? '2' : '3',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: isFirst ? 32 : 24, // Diperbesar sedikit
+                      fontSize: isFirst ? 32 : 24, 
                       fontWeight: FontWeight.w900,
                       fontFamily: 'Modak',
                       shadows: [
@@ -407,10 +439,10 @@ class _FriendsScreen extends State<FriendsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [
-                    const Color(0xFF441F7F),
-                    const Color(0xFF6B46C1),
+                    Color(0xFF441F7F),
+                    Color(0xFF6B46C1),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
@@ -456,10 +488,10 @@ class _FriendsScreen extends State<FriendsScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
+                gradient: const LinearGradient(
                   colors: [
-                    const Color(0xFF441F7F),
-                    const Color(0xFF6B46C1),
+                    Color(0xFF441F7F),
+                    Color(0xFF6B46C1),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(20),
@@ -504,9 +536,9 @@ class _FriendsScreen extends State<FriendsScreen> {
     final isFirst = index == 0;
     
     final rankColors = [
-      const Color(0xFFFFD700), // Emas
-      const Color(0xFFC0C0C0), // Perak
-      const Color(0xFFCD7F32), // Perunggu
+      const Color(0xFFFFD700),
+      const Color(0xFFC0C0C0),
+      const Color(0xFFCD7F32),
     ];
     
     final rankColor = isTopThree ? rankColors[index] : const Color(0xFF6B7280);
@@ -615,17 +647,34 @@ class _FriendsScreen extends State<FriendsScreen> {
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: const Color(0xFFF3EDF7),
-                          backgroundImage: (student.image != null && student.image!.isNotEmpty)
-                              ? (student.image!.startsWith('http') 
-                                  ? NetworkImage(student.image!) 
-                                  : AssetImage(student.image!) as ImageProvider)
-                              : null,
-                          child: (student.image == null || student.image!.isEmpty)
-                              ? Icon(Icons.person, size: 16, color: Colors.grey[400])
-                              : null,
+                        Stack(
+                          clipBehavior: Clip.none,
+                          alignment: Alignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: const Color(0xFFF3EDF7),
+                              backgroundImage: (student.image != null && student.image!.isNotEmpty)
+                                  ? (student.image!.startsWith('http') 
+                                      ? NetworkImage(student.image!) 
+                                      : AssetImage(student.image!) as ImageProvider)
+                                  : null,
+                              child: (student.image == null || student.image!.isEmpty)
+                                  ? Icon(Icons.person, size: 16, color: Colors.grey[400])
+                                  : null,
+                            ),
+                            // === TAMBAHAN: Render Frame Daftar Baris ===
+                            if (student.id != null && userFrames.containsKey(student.id) && userFrames[student.id]!.isNotEmpty)
+                              SizedBox(
+                                width: 52, // Menyesuaikan dengan radius 18 (dikali rasio frame)
+                                height: 52,
+                                child: Image.asset(
+                                  'lib/assets/Frames/${userFrames[student.id]}.png',
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                                ),
+                              ),
+                          ],
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -750,12 +799,12 @@ class _FriendsScreen extends State<FriendsScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      const Color(0xFF441F7F),
-                      const Color(0xFF6B46C1),
+                      Color(0xFF441F7F),
+                      Color(0xFF6B46C1),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(20),

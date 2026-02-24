@@ -51,7 +51,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     super.initState();
   }
 
-  // Helper URL yang merujuk ke GlobalVar
   String formatUrl(String? url) {
     return GlobalVar.formatImageUrl(url);
   }
@@ -59,7 +58,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
   void _loadData() async {
     prefs = await SharedPreferences.getInstance();
     try {
-      // Sinkronisasi Cluster User (Achievers/Disruptors/etc)
       final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/user/adaptive/${widget.user.id}"))
           .timeout(const Duration(seconds: 15));
           
@@ -68,12 +66,11 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
         if (mounted) setState(() => userType = data['currentCluster'] ?? "Disruptors");
       }
 
-      // Ambil data ID avatar yang sudah dibeli
       List<int> dbAvatars = await UserService.getPurchasedAvatarsFromDb(widget.user.id);
       if (mounted) {
         setState(() {
           purchasedAvatarIds = dbAvatars.toSet();
-          purchasedAvatarIds.add(1); // ID 1 adalah default
+          purchasedAvatarIds.add(1); 
         });
       }
     } catch (e) {
@@ -216,7 +213,7 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
         await UserService.updateUser(user!); 
         if (mounted) {
            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avatar berhasil dibeli!')));
-           Navigator.pop(context); // Tutup gallery
+           Navigator.pop(context);
         }
       }
     }
@@ -259,20 +256,35 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
               onPressed: () async {
                 showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator()));
                 
-                if (photo != null) {
-                   final comp = await compressImage(photo!);
-                   if (comp != null) await uploadPhotoProfile(comp, 'profile_${user!.id}.jpg');
-                }
-                
-                user!.name = nameController.text;
-                user!.username = usernameController.text;
-                user!.image = selectedAvatarUrl;
-                if (passwordController.text.isNotEmpty) user!.password = passwordController.text;
-                
-                await UserService.updateUser(user!);
-                if (mounted) {
-                  Navigator.pop(context); 
-                  _showDialog(context);
+                try {
+                  if (photo != null) {
+                     final comp = await compressImage(photo!);
+                     if (comp != null) await uploadPhotoProfile(comp, 'profile_${user!.id}.jpg');
+                  }
+                  
+                  user!.name = nameController.text;
+                  user!.username = usernameController.text;
+                  user!.image = selectedAvatarUrl;
+                  
+                  // Menugaskan password baru sebelum dikirim ke server via updateUser
+                  if (passwordController.text.isNotEmpty) {
+                    user!.password = passwordController.text;
+                  }
+                  
+                  await UserService.updateUser(user!);
+                  
+                  if (mounted) {
+                    Navigator.pop(context); // Tutup loading circle
+                    _showDialog(context);   // Buka dialog sukses
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    Navigator.pop(context); // Tutup loading circle
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('Gagal menyimpan profil: $e'),
+                      backgroundColor: Colors.red,
+                    ));
+                  }
                 }
               },
               child: const Text("Save Changes", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),

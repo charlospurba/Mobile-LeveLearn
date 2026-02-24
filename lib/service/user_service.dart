@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart'; // Tambahan untuk debugPrint
 import 'package:http/http.dart' as http;
 import 'dart:io';
 
@@ -9,8 +10,6 @@ import '../model/user.dart';
 import '../global_var.dart';
 
 class UserService {
-  // Helper agar semua URL otomatis menggunakan prefix /api secara konsisten
-  // Merujuk ke GlobalVar.baseUrl (http://10.107.253.43:7000)
   static String get _apiPath => "${GlobalVar.baseUrl}/api";
 
   // --- FUNGSI AUTHENTICATION ---
@@ -20,7 +19,7 @@ class UserService {
     final request = {'username': username, 'password': password};
     
     try {
-      print("LOG: Mencoba POST login ke $uri");
+      debugPrint("LOG: Mencoba POST login ke $uri");
       final response = await http.post(
         uri,
         headers: {
@@ -44,7 +43,7 @@ class UserService {
         return {'code': response.statusCode, 'message': body['message'] ?? 'Login Gagal'};
       }
     } catch (e) {
-      print("DETAIL ERROR LOGIN: $e");
+      debugPrint("DETAIL ERROR LOGIN: $e");
       return {
         'code': 0, 
         'message': "Timeout/Koneksi Gagal. Pastikan Laptop & HP satu WiFi dan Firewall Laptop mati."
@@ -83,20 +82,11 @@ class UserService {
 
   static Future<Student> updateUser(Student user) async {
     try {
-      Map<String, dynamic> request = {
-        "name": user.name,
-        "username": user.username,
-        "role": user.role,
-        "studentId": user.studentId,
-        "points": user.points,
-        "totalCourses": user.totalCourses,
-        "badges": user.badges,
-        "image": user.image,
-        "streak": user.streak,
-        "lastInteraction": user.lastInteraction?.toIso8601String(),
-        "instructorId": user.instructorId,
-        "instructorCourses": user.instructorCourses
-      };
+      // === PERBAIKAN: Gunakan toJson() agar semua atribut (termasuk password) dikirim ===
+      final requestPayload = user.toJson();
+      
+      debugPrint("LOG UPDATE: Mengirim data ke $_apiPath/user/${user.id}");
+      debugPrint("PAYLOAD: ${jsonEncode(requestPayload)}"); // Cek di terminal apakah password ada
       
       final response = await http.put(
         Uri.parse('$_apiPath/user/${user.id}'),
@@ -104,13 +94,21 @@ class UserService {
           'Content-type': 'application/json; charset=utf-8',
           'Accept': 'application/json',
         },
-        body: jsonEncode(request)
+        body: jsonEncode(requestPayload)
       ).timeout(const Duration(seconds: 10));
 
-      final result = jsonDecode(response.body);
-      final userData = result['user'] ?? result['data'] ?? result;
-      return Student.fromJson(userData);
+      debugPrint("RESPONSE STATUS: ${response.statusCode}");
+      debugPrint("RESPONSE BODY: ${response.body}");
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        final userData = result['user'] ?? result['data'] ?? result;
+        return Student.fromJson(userData);
+      } else {
+        throw Exception("Server menolak update: ${response.body}");
+      }
     } catch (e) {
+      debugPrint("Error updateUser: $e");
       throw Exception("Error updateUser: $e");
     }
   }
@@ -124,9 +122,9 @@ class UserService {
             'Accept': 'application/json',
           },
           body: jsonEncode(data));
-      print('DEBUG UPDATE RAW: ${response.body}');
+      debugPrint('DEBUG UPDATE RAW: ${response.body}');
     } catch (e) {
-      print('Error updateUserRaw: $e');
+      debugPrint('Error updateUserRaw: $e');
     }
   }
 
@@ -199,7 +197,7 @@ class UserService {
       }
       return [];
     } catch (e) {
-      print("Error fetching challenges: $e");
+      debugPrint("Error fetching challenges: $e");
       return [];
     }
   }
@@ -217,9 +215,9 @@ class UserService {
           'type': type,
         }),
       );
-      print('DEBUG TRIGGER CHALLENGE: ${response.body}');
+      debugPrint('DEBUG TRIGGER CHALLENGE: ${response.body}');
     } catch (e) {
-      print('Error triggerChallengeManual: $e');
+      debugPrint('Error triggerChallengeManual: $e');
     }
   }
 
