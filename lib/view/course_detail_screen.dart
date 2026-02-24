@@ -204,7 +204,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Image.asset("lib/assets/LeveLearn.png", width: 100),
+          Image.asset("lib/assets/LeveLearn.png", width: 150),
           const SizedBox(width: 40),
         ],
       ),
@@ -371,7 +371,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
             child: _buildLevelCircle(chapter.level, isCurrent),
           ),
           if (isCurrent) 
-            Positioned(right: -10, bottom: 10, child: Image.asset('lib/assets/rocket.png', width: 60, height: 60)),
+            Positioned(right: -10, bottom: 10, child: Image.asset('lib/assets/rocket.png', width: 45, height: 45)),
         ],
       ),
     );
