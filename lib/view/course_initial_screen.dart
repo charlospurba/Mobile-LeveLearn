@@ -104,7 +104,8 @@ class _CourseInitialScreenState extends State<CourseInitialScreen> {
                       const SizedBox(height: 16),
                       const Text('Daftar Chapter', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor)),
                       _buildChapterList(),
-                      const SizedBox(height: 80),
+                      // PERBAIKAN: Menambah jarak kosong di bawah agar chapter terakhir tidak tertutup tombol
+                      const SizedBox(height: 120), 
                     ],
                   ),
                 )
@@ -154,17 +155,26 @@ class _CourseInitialScreenState extends State<CourseInitialScreen> {
   Widget _buildActionButton() {
     return Positioned(
       bottom: 0, left: 0, right: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor, minimumSize: const Size(double.infinity, 50)),
-          onPressed: () {
-            // AKURAT: Trigger tantangan START_COURSE
-            UserService.triggerChallengeManual(idUser, 'START_COURSE');
-            
-            Navigator.push(context, MaterialPageRoute(builder: (context) => CourseDetailScreen(id: widget.id)));
-          },
-          child: const Text('Kerjakan Course', style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white)),
+      // PERBAIKAN: Tambahkan SafeArea dan penyesuaian padding bawah
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 16.0, bottom: 32.0),
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryColor, 
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12), // Opsional: sudut membulat agar lebih manis
+              ),
+            ),
+            onPressed: () {
+              // AKURAT: Trigger tantangan START_COURSE
+              UserService.triggerChallengeManual(idUser, 'START_COURSE');
+              
+              Navigator.push(context, MaterialPageRoute(builder: (context) => CourseDetailScreen(id: widget.id)));
+            },
+            child: const Text('Kerjakan Course', style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white, fontSize: 16)),
+          ),
         ),
       ),
     );
