@@ -7,7 +7,7 @@ class GlobalVar {
   GlobalVar._internal();
 
   // --- IP LAPTOP (WAJIB SAMA DENGAN IPCONFIG) ---
-  static const String serverIp = '72.60.198.84';
+  static const String serverIp = '172.16.160.237';
   static const String port = '7000';
 
   static String get baseUrl {
@@ -15,12 +15,12 @@ class GlobalVar {
     return 'http://$serverIp:$port';
   }
 
-  static String similiarityEssayUrl = 'http://$serverIp:8002/evaluate/'; 
+  static String similiarityEssayUrl = 'http://$serverIp:8081/evaluate/'; 
 
   static String formatImageUrl(String? url) {
     if (url == null || url.isEmpty) return "";
     
-    // FIX: Jika path lokal, jangan tambahkan host http
+
     if (url.startsWith('lib/assets/') || url.startsWith('assets/')) {
       return url;
     }

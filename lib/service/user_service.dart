@@ -50,20 +50,20 @@ class UserService {
       };
     }
   }
-
-  // --- FUNGSI AMBIL DATA USER ---
-
-  static Future<List<Student>> getAllUser() async {
+  
+ static Future<List<Student>> getAllUser() async {
     try {
       final response = await http.get(Uri.parse('$_apiPath/user'))
           .timeout(const Duration(seconds: 10));
+      
       if (response.statusCode == 200) {
         final List result = jsonDecode(response.body);
         return result.map((user) => Student.fromJson(user)).toList();
       }
-      throw Exception("Gagal mengambil data: ${response.statusCode}");
+      return [];
     } catch (e) {
-      throw Exception("Error getAllUser: $e");
+      debugPrint("Error getAllUser: $e");
+      return [];
     }
   }
 

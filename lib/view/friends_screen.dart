@@ -1,168 +1,222 @@
-import 'dart:convert'; // Tambahan untuk jsonDecode
-import 'package:http/http.dart' as http; // Tambahan untuk fetch API
-import 'package:app/global_var.dart'; // Tambahan untuk GlobalVar.baseUrl
-
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:http/http.dart' as http;
+import 'package:app/global_var.dart';
 import 'package:app/service/user_service.dart';
-import 'package:app/utils/colors.dart';
 import 'package:flutter/material.dart';
-import 'package:line_awesome_flutter/line_awesome_flutter.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; 
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:video_player/video_player.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 import '../model/user.dart';
 
-Color purple = Color(0xFF441F7F);
-Color backgroundNavHex = Color(0xFFF3EDF7);
-const url = 'https://www.globalcareercounsellor.com/blog/wp-content/uploads/2018/05/Online-Career-Counselling-course.jpg';
+// --- PALET WARNA ---
+Color purple = const Color(0xFF441F7F);
+Color softPurple = const Color(0xFFF3EDF7);
+Color gold = const Color(0xFFFFD700);
+Color silver = const Color(0xFFC0C0C0);
+Color bronze = const Color(0xFFCD7F32);
+
+// === MODELS ===
+class CommentModel {
+  final String userName;
+  final String? userImage;
+  final String content;
+  final String createdAt;
+
+  CommentModel({required this.userName, this.userImage, required this.content, required this.createdAt});
+
+  factory CommentModel.fromJson(Map<String, dynamic> json) {
+    return CommentModel(
+      userName: json['user']?['name'] ?? 'User',
+      userImage: json['user']?['image'],
+      content: json['content'] ?? '',
+      createdAt: json['createdAt'] ?? DateTime.now().toIso8601String(),
+    );
+  }
+}
+
+class Post {
+  final int id;
+  final String userName;
+  final String? userImage;
+  final String? userFrame;
+  final String? content;
+  final String? link;
+  final String? fileUrl;
+  final String? fileName;
+  final String createdAt;
+  int likeCount;
+  int commentCount;
+  bool isLiked;
+  List<CommentModel> comments;
+
+  Post({
+    required this.id, required this.userName, this.userImage, this.userFrame,
+    this.content, this.link, this.fileUrl, this.fileName, required this.createdAt,
+    required this.likeCount, required this.commentCount, required this.isLiked, required this.comments,
+  });
+
+  factory Post.fromJson(Map<String, dynamic> json) {
+    final userData = json['user'] as Map<String, dynamic>?;
+    String? frame;
+    if (userData != null && userData['userTrades'] != null) {
+      final trades = userData['userTrades'] as List;
+      if (trades.isNotEmpty) frame = trades[0]['trade']?['image'];
+    }
+    return Post(
+      id: json['id'] ?? 0,
+      userName: userData?['name'] ?? 'Anonymous',
+      userImage: userData?['image'],
+      userFrame: frame,
+      content: json['content'],
+      link: json['link'],
+      fileUrl: json['fileUrl'],
+      fileName: json['fileName'],
+      createdAt: json['createdAt'] ?? DateTime.now().toIso8601String(),
+      likeCount: json['_count']?['likes'] ?? 0,
+      commentCount: json['_count']?['comments'] ?? 0,
+      isLiked: (json['likes'] as List?)?.isNotEmpty ?? false,
+      comments: (json['comments'] as List?)?.map((c) => CommentModel.fromJson(c)).toList() ?? [],
+    );
+  }
+}
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
-
   @override
   State<StatefulWidget> createState() => _FriendsScreen();
 }
 
 class _FriendsScreen extends State<FriendsScreen> {
-  List<Student> user = [];
-  bool _isFloating = false; // Untuk mentrigger loop animasi
-  
-  // === TAMBAHAN: Map untuk menyimpan Frame ID masing-masing pengguna ===
-  Map<int, String> userFrames = {};
-
-  List<Student> sortUserbyPoint(List<Student> list) {
-    list.sort((a, b) => b.points!.compareTo(a.points!));
-    return list;
-  }
-
-  List<Student> studentRole(List<Student> list) {
-    return list.where((user) => user.role == 'STUDENT').toList();
-  }
-
-  void getAllUser() async {
-    final result = await UserService.getAllUser();
-    if (mounted) {
-      setState(() {
-        user = sortUserbyPoint(studentRole(result));
-      });
-      // Fetch frames untuk setiap user setelah daftar didapatkan
-      _fetchFramesForUsers(user);
-    }
-  }
-
-  // === TAMBAHAN: Fungsi untuk melooping dan mengambil frame setiap user ===
-  void _fetchFramesForUsers(List<Student> users) {
-    for (var student in users) {
-      if (student.id != null) {
-        _fetchEquippedFrame(student.id!);
-      }
-    }
-  }
-
-  // === TAMBAHAN: HTTP GET untuk mengambil frame spesifik milik user ===
-  Future<void> _fetchEquippedFrame(int userId) async {
-    try {
-      final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/usertrade/equipped/$userId"));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted && data != null && data['trade'] != null) {
-          setState(() {
-            userFrames[userId] = data['trade']['image']?.toString() ?? "";
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint("Gagal fetch bingkai untuk user $userId: $e");
-    }
-  }
+  List<Student> leaderboard = [];
+  List<Post> posts = [];
+  bool _isLoading = true;
+  bool _isUploading = false;
+  final int currentUserId = 5; 
 
   @override
   void initState() {
     super.initState();
-    getAllUser();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() => _isFloating = true);
+    _refreshData();
+  }
+
+  Future<void> _refreshData() async {
+    await Future.wait([_fetchLeaderboard(), _fetchPosts()]);
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _fetchLeaderboard() async {
+    final result = await UserService.getAllUser();
+    if (mounted) {
+      var filtered = result.where((u) => u.role == 'STUDENT').toList();
+      filtered.sort((a, b) => (b.points ?? 0).compareTo(a.points ?? 0));
+      setState(() => leaderboard = filtered.take(10).toList());
+    }
+  }
+
+  Future<void> _fetchPosts() async {
+    try {
+      final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/friends/posts?currentUserId=$currentUserId"));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        if (mounted) setState(() => posts = data.map((json) => Post.fromJson(json)).toList());
+      }
+    } catch (e) { debugPrint("Fetch error: $e"); }
+  }
+
+  Future<void> _handleLike(Post post) async {
+    setState(() {
+      if (post.isLiked) post.likeCount--; else post.likeCount++;
+      post.isLiked = !post.isLiked;
     });
+    try {
+      await http.post(Uri.parse("${GlobalVar.baseUrl}/api/friends/like"),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({"userId": currentUserId, "postId": post.id}));
+    } catch (e) { _fetchPosts(); }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showCreatePostSheet,
+        backgroundColor: purple,
+        icon: const Icon(Icons.edit, color: Colors.white),
+        label: const Text("Buat Post", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
       body: Stack(
         children: [
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF441F7F), Color(0xFF2D1454), Colors.white],
-                stops: [0.0, 0.4, 0.6],
+                colors: [purple, const Color(0xFF2D1454), Colors.white],
+                stops: const [0.0, 0.4, 0.6],
               ),
             ),
           ),
-          Positioned(
-            top: 200, left: -50,
-            child: Container(width: 200, height: 200, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.03))),
-          ),
-          Positioned(
-            top: 400, right: -80,
-            child: Container(width: 300, height: 300, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.02))),
-          ),
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.1,
-              child: Image.asset("lib/assets/learnbg.png", fit: BoxFit.cover),
-            ),
-          ),
-          CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-            slivers: [
-              _buildSliverAppBar(),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 40, bottom: 10),
-                  child: SizedBox(
-                    height: 280,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _buildAttractivePodiumItem(user, 1, 'lib/assets/leaderboards/banner-silver.png', const Color(0xFF6B7280)),
-                        _buildAttractivePodiumItem(user, 0, 'lib/assets/leaderboards/banner-gold.png', const Color(0xFFF59E0B)),
-                        _buildAttractivePodiumItem(user, 2, 'lib/assets/leaderboards/banner-bronze.png', const Color(0xFFEF4444)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Container(
-                  constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height * 0.5),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9), 
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(30),
-                      topRight: Radius.circular(30),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, -5),
+          _isLoading 
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          : RefreshIndicator(
+              onRefresh: _refreshData,
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  _buildSliverAppBar(),
+                  // --- SECTION 1: PODIUM ---
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 20),
+                      child: SizedBox(
+                        height: 220,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (leaderboard.length > 1) _buildAttractivePodiumItem(leaderboard[1], 1, 'lib/assets/leaderboards/banner-silver.png', silver),
+                            if (leaderboard.isNotEmpty) _buildAttractivePodiumItem(leaderboard[0], 0, 'lib/assets/leaderboards/banner-gold.png', gold),
+                            if (leaderboard.length > 2) _buildAttractivePodiumItem(leaderboard[2], 2, 'lib/assets/leaderboards/banner-bronze.png', bronze),
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 20),
-                      _buildAttractiveSectionHeader(),
-                      const SizedBox(height: 15),
-                      _buildAttractiveFriendsList(),
-                      const SizedBox(height: 30),
-                    ],
+                  // --- SECTION 2: WHITE CONTENT AREA ---
+                  SliverToBoxAdapter(
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.only(topLeft: Radius.circular(30), topRight: Radius.circular(30)),
+                        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))],
+                      ),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 20),
+                          _buildSectionHeader("Papan Juara LeveLearn", Icons.workspace_premium, "${leaderboard.length} Peserta"),
+                          _buildFancyLeaderboardList(),
+                          const SizedBox(height: 30),
+                          _buildSectionHeader("Community Feed", Icons.forum, "Terbaru"),
+                          if (_isUploading) _buildUploadProgress(),
+                          _buildPostList(),
+                          const SizedBox(height: 100),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
         ],
       ),
     );
@@ -170,677 +224,333 @@ class _FriendsScreen extends State<FriendsScreen> {
 
   Widget _buildSliverAppBar() {
     return SliverAppBar(
-      expandedHeight: 180.0,
-      pinned: true,
-      elevation: 0,
-      backgroundColor: const Color(0xFF441F7F),
-      automaticallyImplyLeading: false,
-      flexibleSpace: FlexibleSpaceBar(
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset("lib/assets/gamification.jpeg", fit: BoxFit.cover),
-            Container(color: const Color(0xFF441F7F).withOpacity(0.6)),
-            const SafeArea(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(height: 30),
-                  Text('LEARNING CHAMPION',
-                      style: TextStyle(
-                        fontFamily: 'DIN_Next_Rounded', 
-                        fontWeight: FontWeight.bold, 
-                        fontSize: 26, 
-                        color: Colors.white, 
-                        letterSpacing: 3.0,
-                        shadows: [
-                          Shadow(color: Colors.black45, offset: Offset(0, 2), blurRadius: 10),
-                          Shadow(color: Colors.white24, offset: Offset(0, 0), blurRadius: 20),
-                        ]
-                      )
-                  ),
-                  SizedBox(height: 8),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 40),
-                    child: Text('KOMPETISI PROGRES AKADEMIK MINGGUAN',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontFamily: 'DIN_Next_Rounded', fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 1.5),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      expandedHeight: 80.0, pinned: true, elevation: 0, backgroundColor: purple,
+      flexibleSpace: FlexibleSpaceBar(centerTitle: true, title: Image.asset("lib/assets/LeveLearn.png", width: 140)),
+    );
+  }
+
+  Widget _buildAttractivePodiumItem(Student s, int index, String bannerPath, Color color) {
+    double avatarRadius = index == 0 ? 38.0 : 31.0;
+    return Flexible(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Image.asset("lib/assets/LeveLearn.png", width: 150),
-          const SizedBox(width: 40),
+          CircleAvatar(
+            radius: avatarRadius + 3,
+            backgroundColor: color,
+            child: CircleAvatar(
+              radius: avatarRadius,
+              backgroundColor: Colors.white,
+              backgroundImage: (s.image != null && s.image!.isNotEmpty) ? NetworkImage(s.image!) : null,
+              child: s.image == null ? Icon(Icons.person, color: color) : null,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(s.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11), maxLines: 1),
+          Text("${s.points} pts", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 10)),
+          const SizedBox(height: 4),
+          SizedBox(height: index == 0 ? 100 : 80, child: Image.asset(bannerPath, fit: BoxFit.contain)),
         ],
       ),
     );
   }
 
-  Widget _buildAttractivePodiumItem(List<Student> list, int index, String bannerPath, Color color) {
-    final student = list.isNotEmpty && list.length > index ? list[index] : null;
-    final heights = [90, 75, 60];
-    final height = heights[index];
-    final isFirst = index == 0;
-    
-    return Flexible(
-      child: TweenAnimationBuilder<double>(
-        duration: Duration(milliseconds: 800 + (index * 200)),
-        curve: Curves.elasticOut,
-        tween: Tween<double>(begin: 0.0, end: 1.0),
-        builder: (context, entryValue, child) {
-          return TweenAnimationBuilder<double>(
-            duration: const Duration(seconds: 2),
-            tween: Tween<double>(begin: 0.0, end: _isFloating ? 1.0 : 0.0),
-            curve: Curves.easeInOutSine,
-            onEnd: () => setState(() => _isFloating = !_isFloating),
-            builder: (context, floatValue, child) {
-              double offset = (index == 0 ? 12.0 : 8.0) * (floatValue - 0.5) * 2;
-              return Transform.translate(
-                offset: Offset(0, -20 * (1 - entryValue) + (entryValue == 1.0 ? offset : 0)),
-                child: Transform.scale(
-                  scale: entryValue,
-                  child: Opacity(
-                    opacity: entryValue.clamp(0.0, 1.0),
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: child,
+  Widget _buildFancyLeaderboardList() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      child: ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: leaderboard.length,
+        itemBuilder: (context, i) {
+          final student = leaderboard[i];
+          Color rColor = i == 0 ? gold : (i == 1 ? silver : (i == 2 ? bronze : Colors.grey.shade400));
+          return Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            elevation: 2,
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: i < 3 ? rColor.withOpacity(0.2) : softPurple, 
+                child: i < 3 
+                    ? Icon(Icons.emoji_events, color: rColor, size: 20)
+                    : Text("${i + 1}", style: TextStyle(color: purple, fontWeight: FontWeight.bold))
+              ),
+              title: Text(student.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              trailing: Text("${student.points} pts", style: TextStyle(color: purple, fontWeight: FontWeight.bold)),
+            ),
           );
         },
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              clipBehavior: Clip.none, 
-              alignment: Alignment.center,
-              children: [
-                if (isFirst)
-                  TweenAnimationBuilder<double>(
-                    duration: const Duration(seconds: 2),
-                    tween: Tween<double>(begin: 0.0, end: 1.0),
-                    builder: (context, value, child) {
-                      return Container(
-                        width: 65, height: 65,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: color.withOpacity(0.3 + (0.2 * value)),
-                              blurRadius: 15 + (10 * value),
-                              spreadRadius: 2 + (5 * value),
-                            )
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(colors: [color, color.withOpacity(0.5)]),
-                  ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: CircleAvatar(
-                      radius: isFirst ? 28 : 24,
-                      backgroundColor: Colors.white,
-                      backgroundImage: (student?.image != null && student!.image!.isNotEmpty)
-                          ? (student.image!.startsWith('http') 
-                              ? NetworkImage(student.image!) 
-                              : AssetImage(student.image!) as ImageProvider)
-                          : null,
-                      child: (student?.image == null || student!.image!.isEmpty)
-                          ? Icon(Icons.person, size: isFirst ? 30 : 24, color: Colors.grey[400])
-                          : null,
-                    ),
-                  ),
-                ),
-                // === TAMBAHAN: Render Frame Podium ===
-                if (student != null && student.id != null && userFrames.containsKey(student.id) && userFrames[student.id]!.isNotEmpty)
-                  SizedBox(
-                    width: isFirst ? 92 : 80, // Ukuran dinamis agar proporsional dengan avatar
-                    height: isFirst ? 92 : 80,
-                    child: Image.asset(
-                      'lib/assets/Frames/${userFrames[student.id]}.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => const SizedBox(),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
-                ],
-              ),
-              child: Text(
-                student?.name ?? '...',
-                style: TextStyle(
-                  color: const Color(0xFF441F7F),
-                  fontSize: isFirst ? 11 : 9,
-                  fontWeight: FontWeight.w900,
-                  fontFamily: 'DIN_Next_Rounded',
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(height: 4),
-            
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [color, color.withOpacity(0.8)]),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.5), width: 1),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.bolt_rounded, color: Colors.white, size: isFirst ? 12 : 10),
-                  const SizedBox(width: 2),
-                  Text(
-                    '${student?.points ?? 0}',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isFirst ? 11 : 9,
-                      fontWeight: FontWeight.w900,
-                      fontFamily: 'DIN_Next_Rounded',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            
-            Container(
-              width: isFirst ? 75 : 65,
-              height: height.toDouble(),
-              decoration: BoxDecoration(
-                image: DecorationImage(image: AssetImage(bannerPath), fit: BoxFit.cover),
-                borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
-                boxShadow: [
-                  BoxShadow(color: color.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))
-                ],
-              ),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 20),
-                  child: Text(
-                    index == 0 ? '1' : index == 1 ? '2' : '3',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isFirst ? 32 : 24, 
-                      fontWeight: FontWeight.w900,
-                      fontFamily: 'Modak',
-                      shadows: [
-                        Shadow(color: Colors.black.withOpacity(0.6), blurRadius: 8, offset: const Offset(0, 3)),
-                        Shadow(color: Colors.black.withOpacity(0.4), blurRadius: 2, offset: const Offset(1, 1)),
-                      ]
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 
-  Widget _buildAttractiveSectionHeader() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF441F7F).withOpacity(0.1),
-              const Color(0xFF6B46C1).withOpacity(0.05),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF441F7F).withOpacity(0.2),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF441F7F).withOpacity(0.1),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF441F7F),
-                    Color(0xFF6B46C1),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF441F7F).withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.groups_rounded,
-                color: Colors.white,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Semua Peserta',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
-                      fontFamily: 'DIN_Next_Rounded',
-                    ),
-                  ),
-                  Text(
-                    'Daftar lengkap kompetitor',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF6B7280),
-                      fontFamily: 'DIN_Next_Rounded',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF441F7F),
-                    Color(0xFF6B46C1),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF441F7F).withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Text(
-                '${user.length} peserta',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  fontFamily: 'DIN_Next_Rounded',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAttractiveFriendsList() {
+  Widget _buildPostList() {
+    if (posts.isEmpty) return const Padding(padding: EdgeInsets.all(40), child: Text("Belum ada postingan komunitas."));
     return ListView.builder(
-      physics: const NeverScrollableScrollPhysics(),
       shrinkWrap: true,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: user.length,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: posts.length,
       itemBuilder: (context, index) {
-        return _buildAttractiveFriendCard(user[index], index);
-      },
-    );
-  }
+        final post = posts[index];
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          elevation: 3,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ListTile(
+                leading: CircleAvatar(backgroundImage: post.userImage != null ? NetworkImage(post.userImage!) : null),
+                title: Text(post.userName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(_formatTime(DateTime.parse(post.createdAt))),
+                trailing: IconButton(icon: const Icon(Icons.share, size: 20), onPressed: () => Share.share("${post.content}\n\nLihat di LeveLearn!")),
+              ),
+              if (post.content != null) Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Text(post.content!)),
+              
+              // --- MEDIA CONTENT HANDLER (YouTube / File / Link) ---
+              _buildMediaContent(post),
 
-  Widget _buildAttractiveFriendCard(Student student, int index) {
-    final isTopThree = index < 3;
-    final isFirst = index == 0;
-    
-    final rankColors = [
-      const Color(0xFFFFD700),
-      const Color(0xFFC0C0C0),
-      const Color(0xFFCD7F32),
-    ];
-    
-    final rankColor = isTopThree ? rankColors[index] : const Color(0xFF6B7280);
-    
-    final List<Color> cardGradient = switch (index) {
-        0 => [const Color(0xFFFFFBEB), Colors.white], 
-        1 => [const Color(0xFFF9FAFB), Colors.white], 
-        2 => [const Color(0xFFFEF2F2), Colors.white],
-        _ => [Colors.white, Colors.white],
-    };
-
-    return TweenAnimationBuilder<double>(
-      duration: Duration(milliseconds: 400 + (index * 100)),
-      curve: Curves.easeOutQuad,
-      tween: Tween<double>(begin: 0.0, end: 1.0),
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: child,
+              const Divider(),
+              Row(
+                children: [
+                  const SizedBox(width: 10),
+                  TextButton.icon(onPressed: () => _handleLike(post), icon: Icon(post.isLiked ? Icons.favorite : Icons.favorite_border, color: post.isLiked ? Colors.red : Colors.grey), label: Text("${post.likeCount}")),
+                  TextButton.icon(onPressed: () => _showCommentSheet(post), icon: const Icon(Icons.chat_bubble_outline), label: Text("${post.commentCount}")),
+                ],
+              ),
+            ],
           ),
         );
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: cardGradient,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+    );
+  }
+
+  Widget _buildMediaContent(Post post) {
+    // 1. Prioritas: Cek Link YouTube
+    if (post.link != null && (post.link!.contains("youtube.com") || post.link!.contains("youtu.be"))) {
+      String? videoId = YoutubePlayer.convertUrlToId(post.link!);
+      if (videoId != null) {
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: YoutubePlayer(
+              controller: YoutubePlayerController(initialVideoId: videoId, flags: const YoutubePlayerFlags(autoPlay: false)),
+              showVideoProgressIndicator: true,
             ),
-            if (isFirst)
-              BoxShadow(
-                color: const Color(0xFFFFD700).withOpacity(0.2),
-                blurRadius: 15,
-                offset: const Offset(0, 0),
-              ),
-          ],
-          border: isTopThree ? Border.all(
-            color: rankColor.withOpacity(0.3),
-            width: 1.5,
-          ) : Border.all(
-            color: Colors.grey.withOpacity(0.1),
-            width: 1,
           ),
+        );
+      }
+    }
+
+    // 2. Tampilkan Link Biasa jika bukan YouTube
+    if (post.link != null && post.link!.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+        child: InkWell(
+          onTap: () => launchUrl(Uri.parse(post.link!), mode: LaunchMode.externalApplication),
+          child: Row(children: [
+            const Icon(Icons.link, color: Colors.blue, size: 18),
+            const SizedBox(width: 5),
+            Expanded(child: Text(post.link!, style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline), overflow: TextOverflow.ellipsis))
+          ]),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
+      );
+    }
+
+    // 3. Tampilkan File Preview (PDF/Image/Video Upload)
+    if (post.fileUrl != null) {
+      final String encodedUrl = Uri.encodeFull(post.fileUrl!);
+      final String fileName = post.fileName?.toLowerCase() ?? "";
+      bool isPdf = fileName.endsWith(".pdf");
+      bool isImage = fileName.endsWith(".jpg") || fileName.endsWith(".png") || fileName.endsWith(".jpeg");
+      bool isVideo = fileName.endsWith(".mp4") || fileName.endsWith(".mov");
+
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: Container(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.withOpacity(0.3))),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
             children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isTopThree 
-                      ? [rankColor, rankColor.withOpacity(0.7)]
-                      : [const Color(0xFF441F7F), const Color(0xFF6B46C1)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: isTopThree ? rankColor.withOpacity(0.4) : const Color(0xFF441F7F).withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: isTopThree
-                    ? Icon(
-                        switch (index) {
-                          0 => Icons.emoji_events_rounded,
-                          1 => Icons.military_tech_rounded,
-                          2 => Icons.workspace_premium_rounded,
-                          _ => Icons.star,
-                        },
-                        color: Colors.white,
-                        size: 28,
-                      )
-                    : Text(
-                        '${index + 1}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          fontFamily: 'DIN_Next_Rounded',
+              SizedBox(
+                height: 350,
+                width: double.infinity,
+                child: isPdf 
+                  ? SfPdfViewer.network(encodedUrl) // PDF Content Inline
+                  : isImage 
+                    ? Image.network(encodedUrl, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Center(child: Icon(Icons.broken_image)))
+                    : isVideo 
+                      ? InlineVideoPlayer(url: encodedUrl) // MP4/MOV Player
+                      : WebViewWidget( // Fallback Office Files
+                          controller: WebViewController()
+                            ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                            ..loadRequest(Uri.parse("https://docs.google.com/viewer?url=$encodedUrl&embedded=true")),
                         ),
-                      ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          alignment: Alignment.center,
-                          children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: const Color(0xFFF3EDF7),
-                              backgroundImage: (student.image != null && student.image!.isNotEmpty)
-                                  ? (student.image!.startsWith('http') 
-                                      ? NetworkImage(student.image!) 
-                                      : AssetImage(student.image!) as ImageProvider)
-                                  : null,
-                              child: (student.image == null || student.image!.isEmpty)
-                                  ? Icon(Icons.person, size: 16, color: Colors.grey[400])
-                                  : null,
-                            ),
-                            // === TAMBAHAN: Render Frame Daftar Baris ===
-                            if (student.id != null && userFrames.containsKey(student.id) && userFrames[student.id]!.isNotEmpty)
-                              SizedBox(
-                                width: 52, // Menyesuaikan dengan radius 18 (dikali rasio frame)
-                                height: 52,
-                                child: Image.asset(
-                                  'lib/assets/Frames/${userFrames[student.id]}.png',
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) => const SizedBox(),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                student.name,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1F2937),
-                                  fontFamily: 'DIN_Next_Rounded',
-                                ),
-                              ),
-                              Text(
-                                student.studentId ?? '',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF6B7280),
-                                  fontFamily: 'DIN_Next_Rounded',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    if (isTopThree)
-                      Row(
-                        children: [
-                          for (int i = 0; i < 5; i++)
-                            TweenAnimationBuilder<double>(
-                              duration: Duration(milliseconds: 200 + (i * 150)),
-                              tween: Tween<double>(begin: 0.0, end: 1.0),
-                              builder: (context, value, child) {
-                                return Transform.rotate(
-                                  angle: value * 0.2,
-                                  child: Container(
-                                    margin: const EdgeInsets.only(right: 4),
-                                    child: Icon(
-                                      i < 3 ? Icons.star_rounded : Icons.diamond_rounded,
-                                      color: rankColor,
-                                      size: 10 + (value * 4),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          Expanded(
-                            child: TweenAnimationBuilder<double>(
-                              duration: const Duration(milliseconds: 1200),
-                              tween: Tween<double>(begin: 0.0, end: 1.0),
-                              builder: (context, value, child) {
-                                return Container(
-                                  height: 3,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        rankColor,
-                                        rankColor.withOpacity(0.6),
-                                        Colors.transparent,
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(2),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: rankColor.withOpacity(value * 0.5),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 1),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      Row(
-                        children: [
-                          for (int i = 0; i < 2; i++)
-                            TweenAnimationBuilder<double>(
-                              duration: Duration(milliseconds: 400 + (i * 200)),
-                              tween: Tween<double>(begin: 0.0, end: 1.0),
-                              builder: (context, value, child) {
-                                return Transform.scale(
-                                  scale: value,
-                                  child: Container(
-                                    margin: const EdgeInsets.only(right: 6),
-                                    child: Icon(
-                                      Icons.circle,
-                                      color: const Color(0xFF441F7F).withOpacity(0.6),
-                                      size: 6,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          Expanded(
-                            child: TweenAnimationBuilder<double>(
-                              duration: const Duration(milliseconds: 600),
-                              tween: Tween<double>(begin: 0.0, end: 1.0),
-                              builder: (context, value, child) {
-                                return Container(
-                                  height: 1,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF441F7F).withOpacity(value * 0.4),
-                                    borderRadius: BorderRadius.circular(1),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF441F7F),
-                      Color(0xFF6B46C1),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF441F7F).withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.star_rounded,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${student.points}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'DIN_Next_Rounded',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                padding: const EdgeInsets.all(10),
+                color: Colors.grey.shade900,
+                child: Row(children: [
+                  Expanded(child: Text(post.fileName ?? "Dokumen", style: const TextStyle(color: Colors.white, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                  const Icon(Icons.remove_red_eye, color: Colors.white, size: 18),
+                ]),
+              )
             ],
           ),
         ),
+      );
+    }
+    return const SizedBox();
+  }
+
+  void _showCreatePostSheet() {
+    TextEditingController contentCtrl = TextEditingController();
+    TextEditingController linkCtrl = TextEditingController();
+    PlatformFile? pickedFile;
+
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 20, right: 20, top: 20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text("Buat Postingan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 15),
+            TextField(controller: contentCtrl, maxLines: 3, decoration: const InputDecoration(hintText: "Tulis sesuatu...", border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(controller: linkCtrl, decoration: const InputDecoration(hintText: "Link YouTube/Tautan", prefixIcon: Icon(Icons.link))),
+            const SizedBox(height: 10),
+            if (pickedFile != null) ListTile(leading: const Icon(Icons.attach_file), title: Text(pickedFile!.name)),
+            TextButton.icon(
+              onPressed: () async {
+                var res = await FilePicker.platform.pickFiles(withData: true);
+                if (res != null) setModalState(() => pickedFile = res.files.first);
+              },
+              icon: const Icon(Icons.add_a_photo), label: const Text("Lampirkan File/Video"),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: purple),
+                onPressed: () async {
+                  if (contentCtrl.text.isEmpty && pickedFile == null) return;
+                  Navigator.pop(ctx);
+                  setState(() => _isUploading = true);
+                  String? supabaseUrl;
+                  if (pickedFile != null) {
+                    final String safeName = pickedFile!.name.replaceAll(' ', '_');
+                    final String storagePath = 'community/${currentUserId}_${DateTime.now().millisecondsSinceEpoch}_$safeName';
+                    await Supabase.instance.client.storage.from('Postingan').uploadBinary(storagePath, pickedFile!.bytes!);
+                    supabaseUrl = Supabase.instance.client.storage.from('Postingan').getPublicUrl(storagePath);
+                  }
+                  await http.post(Uri.parse("${GlobalVar.baseUrl}/api/friends/posts"),
+                    headers: {"Content-Type": "application/json"},
+                    body: jsonEncode({"userId": currentUserId, "content": contentCtrl.text, "link": linkCtrl.text, "fileUrl": supabaseUrl, "fileName": pickedFile?.name}));
+                  _refreshData();
+                  setState(() => _isUploading = false);
+                },
+                child: const Text("Posting", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ]),
+        ),
       ),
     );
+  }
+
+  void _showCommentSheet(Post post) {
+    TextEditingController ctrl = TextEditingController();
+    showModalBottomSheet(
+      context: context, isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Komentar", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Divider(),
+            if (post.comments.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text("Belum ada komentar.")),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: 250),
+              child: ListView(
+                shrinkWrap: true,
+                children: post.comments.map((c) => ListTile(
+                  leading: const CircleAvatar(radius: 15, child: Icon(Icons.person, size: 15)),
+                  title: Text(c.userName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  subtitle: Text(c.content),
+                )).toList(),
+              ),
+            ),
+            Row(children: [
+              Expanded(child: TextField(controller: ctrl, decoration: const InputDecoration(hintText: "Tulis balasan..."))),
+              IconButton(icon: Icon(Icons.send, color: purple), onPressed: () async {
+                if(ctrl.text.isEmpty) return;
+                await http.post(Uri.parse("${GlobalVar.baseUrl}/api/friends/comment"),
+                  headers: {"Content-Type": "application/json"},
+                  body: jsonEncode({"userId": currentUserId, "postId": post.id, "content": ctrl.text}));
+                Navigator.pop(context);
+                _fetchPosts();
+              })
+            ]),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, String badge) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), 
+      child: Row(children: [
+        Icon(icon, color: purple), 
+        const SizedBox(width: 10), 
+        Expanded(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))), 
+        Text(badge, style: TextStyle(color: purple, fontWeight: FontWeight.bold))
+      ])
+    );
+  }
+
+  Widget _buildUploadProgress() {
+    return Container(margin: const EdgeInsets.all(15), padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: softPurple, borderRadius: BorderRadius.circular(15)), child: Row(children: [const CircularProgressIndicator(), const SizedBox(width: 15), const Text("Sedang membagikan...")]));
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final duration = DateTime.now().difference(dateTime);
+    if (duration.inDays > 0) return '${duration.inDays} hari lalu';
+    if (duration.inHours > 0) return '${duration.inHours} jam lalu';
+    return '${duration.inMinutes} menit lalu';
+  }
+}
+
+// === WIDGET: INLINE VIDEO PLAYER ===
+class InlineVideoPlayer extends StatefulWidget {
+  final String url;
+  const InlineVideoPlayer({super.key, required this.url});
+  @override
+  State<InlineVideoPlayer> createState() => _InlineVideoPlayerState();
+}
+class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
+  late VideoPlayerController _controller;
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))..initialize().then((_) => setState(() {}));
+  }
+  @override
+  void dispose() { _controller.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    return _controller.value.isInitialized
+        ? Stack(alignment: Alignment.center, children: [
+            AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller)),
+            IconButton(icon: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow, size: 50, color: Colors.white), onPressed: () => setState(() => _controller.value.isPlaying ? _controller.pause() : _controller.play()))
+          ])
+        : const Center(child: CircularProgressIndicator());
   }
 }

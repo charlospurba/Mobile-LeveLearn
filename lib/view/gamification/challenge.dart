@@ -168,7 +168,7 @@ class ChallengeWidget extends StatelessWidget {
 
   // LOGIKA KLAIM DAN LOGGING AKTIVITAS
   void _handleClaimReward(BuildContext context, int userChallengeId) async {
-    // 1. LOG TRIGGER: PLAYERS (Reward-like behavior proxy)
+    // 1. LOG TRIGGER (Reward-like behavior proxy)
     // Mencatat bahwa user aktif mengejar/mengambil reward
     await ActivityService.sendLog(
       userId: userId, 
