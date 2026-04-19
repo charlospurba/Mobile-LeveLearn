@@ -67,29 +67,26 @@ class TradeService {
       return false;
     }
   }
-
-  static Future<bool> buyShopItem(int userId, int tradeId, int price) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_apiPath/trade/buy'),
-        headers: {
-          'Content-type': 'application/json; charset=utf-8',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          "userId": userId,
-          "tradeId": tradeId,
-          "price": price
-        }),
-      ).timeout(const Duration(seconds: 15));
-      
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (e) {
-      print("Error buyShopItem: $e");
-      return false;
-    }
+static Future<bool> buyShopItem(int userId, int tradeId) async {
+  try {
+    final response = await http.post(
+      Uri.parse('${GlobalVar.baseUrl}/api/trade/buy'),
+      headers: {
+        'Content-type': 'application/json; charset=utf-8',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode({
+        "userId": userId,
+        "tradeId": tradeId,
+      }),
+    ).timeout(const Duration(seconds: 15));
+    
+    return response.statusCode == 200 || response.statusCode == 201;
+  } catch (e) {
+    debugPrint("Error buyShopItem: $e");
+    return false;
   }
-
+}
   static Future<List<UserTrade>> getUserTrade(int userId) async {
     try {
       final response = await http.get(

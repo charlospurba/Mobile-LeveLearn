@@ -5,9 +5,11 @@ class GlobalVar {
   static final GlobalVar _instance = GlobalVar._internal();
   factory GlobalVar() => _instance;
   GlobalVar._internal();
+  static int userId = 0; 
+  static String userName = "";
 
   // --- IP LAPTOP (WAJIB SAMA DENGAN IPCONFIG) ---
-  static const String serverIp = '172.16.160.237';
+  static const String serverIp = '10.58.27.43';
   static const String port = '7000';
 
   static String get baseUrl {

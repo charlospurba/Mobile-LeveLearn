@@ -27,13 +27,6 @@ import 'package:app/view/gamification/rank_stat.dart';
 import 'package:app/view/gamification/streak_stat.dart';
 import 'package:app/view/gamification/total_points.dart';
 
-class AvatarModel {
-  final int id;
-  final String imageUrl;
-  final int price;
-  AvatarModel({required this.id, required this.imageUrl, required this.price});
-}
-
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -52,22 +45,7 @@ class _ProfileState extends State<ProfileScreen> {
   int streakDays = 0;
 
   String userType = "Disruptors";
-  String? currentFrameDesignId; // Ini akan berisi "Frame1", "Frame2", dst.
-
-  List<AvatarModel> availableAvatars = [
-    AvatarModel(id: 1, imageUrl: 'lib/assets/avatars/avatar1.jpeg', price: 0),
-    AvatarModel(id: 2, imageUrl: 'lib/assets/avatars/avatar2.jpeg', price: 100),
-    AvatarModel(id: 3, imageUrl: 'lib/assets/avatars/avatar3.jpeg', price: 100),
-    AvatarModel(id: 4, imageUrl: 'lib/assets/avatars/avatar4.jpeg', price: 100),
-    AvatarModel(id: 5, imageUrl: 'lib/assets/avatars/avatar5.jpeg', price: 200),
-    AvatarModel(id: 6, imageUrl: 'lib/assets/avatars/avatar6.jpeg', price: 200),
-    AvatarModel(id: 7, imageUrl: 'lib/assets/avatars/avatar7.jpeg', price: 250),
-    AvatarModel(id: 8, imageUrl: 'lib/assets/avatars/avatar8.jpeg', price: 250),
-    AvatarModel(id: 9, imageUrl: 'lib/assets/avatars/avatar9.jpeg', price: 300),
-    AvatarModel(id: 10, imageUrl: 'lib/assets/avatars/avatar10.jpeg', price: 300),
-    AvatarModel(id: 11, imageUrl: 'lib/assets/avatars/avatar11.jpeg', price: 350),
-    AvatarModel(id: 12, imageUrl: 'lib/assets/avatars/avatar12.jpeg', price: 350),
-  ];
+  String? currentFrameDesignId;
 
   @override
   void initState() {
@@ -145,20 +123,27 @@ class _ProfileState extends State<ProfileScreen> {
     }
   }
 
+  Widget _buildFrameWidget(String path, double size) {
+    if (path.startsWith('http')) {
+      return Image.network(GlobalVar.formatImageUrl(path), fit: BoxFit.contain);
+    } else if (path.contains('/')) {
+      return Image.asset(path, fit: BoxFit.contain);
+    } else {
+      return Image.asset('lib/assets/Frames/$path.png', fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => const SizedBox());
+    }
+  }
+
   Future<void> fetchAdaptiveProfile(int idUser) async {
     final String url = "${GlobalVar.baseUrl}/api/user/adaptive/$idUser";
     try {
       final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (mounted) {
-          setState(() {
-            userType = data['currentCluster'] ?? "Disruptors";
-          });
-        }
+        if (mounted) setState(() => userType = data['currentCluster'] ?? "Disruptors");
       }
     } catch (e) {
-      debugPrint("Gagal sinkron cluster di Profile (Timeout): $e");
+      debugPrint("Gagal sinkron cluster di Profile: $e");
     }
   }
 
@@ -170,37 +155,18 @@ class _ProfileState extends State<ProfileScreen> {
     }
   }
 
-  // --- HELPER FUNGSI BARU UNTUK RENDER GAMBAR BADGE YANG AMAN ---
   Widget _buildSafeBadgeImage(String? rawUrl, {double size = 60}) {
     if (rawUrl == null || rawUrl.isEmpty) {
       return Image.asset('lib/assets/pictures/icon.png', width: size, height: size, fit: BoxFit.cover);
     } 
-    
-    // Jika URL adalah link Supabase (http/https), langsung gunakan Network
     if (rawUrl.startsWith('http')) {
-      return Image.network(
-        rawUrl, 
-        width: size, 
-        height: size, 
-        fit: BoxFit.cover,
-        errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: size, height: size),
-      );
+      return Image.network(rawUrl, width: size, height: size, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: size, height: size));
     } 
-    
-    // Jika dari local asset frontend
     if (rawUrl.startsWith('lib/assets/')) {
       return Image.asset(rawUrl, width: size, height: size, fit: BoxFit.cover);
     }
-
-    // Fallback ke format URL backend lama
     String fixUrl = formatUrl(rawUrl.replaceAll("badges//", "badges/"));
-    return Image.network(
-      fixUrl, 
-      width: size, 
-      height: size, 
-      fit: BoxFit.cover,
-      errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: size, height: size),
-    );
+    return Image.network(fixUrl, width: size, height: size, fit: BoxFit.cover, errorBuilder: (c, e, s) => Image.asset('lib/assets/pictures/icon.png', width: size, height: size));
   }
 
   @override
@@ -220,12 +186,7 @@ class _ProfileState extends State<ProfileScreen> {
       ),
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-                image: DecorationImage(
-                    image: AssetImage('lib/assets/pictures/background-pattern.png'),
-                    fit: BoxFit.cover)),
-          ),
+          Container(decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('lib/assets/pictures/background-pattern.png'), fit: BoxFit.cover))),
           RefreshIndicator(
             onRefresh: getUserData,
             child: SingleChildScrollView(
@@ -256,10 +217,7 @@ class _ProfileState extends State<ProfileScreen> {
 
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        color: GlobalVar.primaryColor,
-        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
-      ),
+      decoration: const BoxDecoration(color: GlobalVar.primaryColor, borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30))),
       padding: const EdgeInsets.only(bottom: 32, top: 20),
       child: Column(
         children: [
@@ -306,15 +264,8 @@ class _ProfileState extends State<ProfileScreen> {
       alignment: Alignment.center,
       children: [
         Container(
-          width: 100, 
-          height: 100,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle, 
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)
-            ]
-          ),
+          width: 100, height: 100,
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)]),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(100),
             child: imgPath != null && imgPath.isNotEmpty
@@ -324,8 +275,7 @@ class _ProfileState extends State<ProfileScreen> {
                 : const Icon(Icons.person, size: 60, color: Colors.white),
           ),
         ),
-
-        if (currentFrameDesignId != null && currentFrameDesignId != "null")
+        if (currentFrameDesignId != null && currentFrameDesignId != "null" && currentFrameDesignId!.isNotEmpty)
           TweenAnimationBuilder<double>(
             tween: Tween<double>(begin: 0.8, end: 1.0),
             duration: const Duration(milliseconds: 600),
@@ -333,30 +283,20 @@ class _ProfileState extends State<ProfileScreen> {
             builder: (context, scale, child) {
               return Transform.scale(
                 scale: scale,
-                child: SizedBox(
-                  width: 145,
-                  height: 145,
-                  child: Image.asset(
-                    'lib/assets/Frames/$currentFrameDesignId.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => const SizedBox(),
-                  ),
-                ),
+                child: SizedBox(width: 145, height: 145, child: _buildFrameWidget(currentFrameDesignId!, 145)),
               );
             }
           ),
-
         Positioned(
-          bottom: 5,
-          right: 5,
+          bottom: 5, right: 5,
           child: GestureDetector(
             onTap: () async {
-              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!, availableAvatars: availableAvatars)));
+              // PERBAIKAN: Tidak lagi mengirim availableAvatars statis
+              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!)));
               if (result == true) getUserData();
             },
             child: Container(
-              width: 32,
-              height: 32,
+              width: 32, height: 32,
               decoration: BoxDecoration(shape: BoxShape.circle, color: GlobalVar.secondaryColor, border: Border.all(color: Colors.white, width: 2)),
               child: const Icon(LineAwesomeIcons.pencil_alt_solid, color: Colors.white, size: 16),
             ),
@@ -386,17 +326,9 @@ class _ProfileState extends State<ProfileScreen> {
                     itemBuilder: (context, index) {
                       final badge = userBadges![index].badge;
                       if (badge == null) return const SizedBox();
-                      
                       return GestureDetector(
                         onTap: () => _showBadgeDetails(context, badge),
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            // PANGGIL FUNGSI SAFE BUILDER DISINI
-                            child: _buildSafeBadgeImage(badge.image, size: 60),
-                          ),
-                        ),
+                        child: Padding(padding: const EdgeInsets.only(right: 12), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: _buildSafeBadgeImage(badge.image, size: 60))),
                       );
                     },
                   )
@@ -414,7 +346,8 @@ class _ProfileState extends State<ProfileScreen> {
         children: [
           if (!isDisruptor) ProfileMenuWidget(title: "Trades", icon: LineAwesomeIcons.coins_solid, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => TradeScreen(user: user!)))),
           ProfileMenuWidget(title: "Update Profile", icon: LineAwesomeIcons.person_booth_solid, onPress: () async {
-            final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!, availableAvatars: availableAvatars)));
+            // PERBAIKAN: Tidak lagi mengirim availableAvatars statis
+            final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UpdateProfile(user: user!)));
             if (result == true) getUserData();
           }),
           ProfileMenuWidget(title: "Quick Access", icon: LineAwesomeIcons.accessible_icon, onPress: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const QuickAccessScreen()))),
@@ -427,10 +360,7 @@ class _ProfileState extends State<ProfileScreen> {
   Widget _buildLogoutButton() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(onPressed: logout, style: ElevatedButton.styleFrom(backgroundColor: GlobalVar.primaryColor, shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(vertical: 15)), child: const Text("Log Out", style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white))),
-      ),
+      child: SizedBox(width: double.infinity, child: ElevatedButton(onPressed: logout, style: ElevatedButton.styleFrom(backgroundColor: GlobalVar.primaryColor, shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(vertical: 15)), child: const Text("Log Out", style: TextStyle(fontFamily: 'DIN_Next_Rounded', color: Colors.white)))),
     );
   }
 
@@ -439,7 +369,6 @@ class _ProfileState extends State<ProfileScreen> {
       Course resCourse = await CourseService.getCourse(badge.courseId);
       Chapter resChapter = await ChapterService.getChapterById(badge.chapterId);
       if (!mounted) return;
-      
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -448,11 +377,7 @@ class _ProfileState extends State<ProfileScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16), 
-                // PANGGIL FUNGSI SAFE BUILDER DISINI
-                child: _buildSafeBadgeImage(badge.image, size: 100)
-              ),
+              ClipRRect(borderRadius: BorderRadius.circular(16), child: _buildSafeBadgeImage(badge.image, size: 100)),
               const SizedBox(height: 16),
               Text(badge.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded', color: AppColors.primaryColor, fontSize: 18)),
               Text('(${badge.type})', style: const TextStyle(fontFamily: 'DIN_Next_Rounded')),

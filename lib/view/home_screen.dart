@@ -47,7 +47,7 @@ class _HomeState extends State<Homescreen> {
   List<UserBadge>? userBadges = [];
   int streakDays = 0;
   String userType = "Disruptors";
-  String? currentFrameDesignId; // Field baru untuk menyimpan ID Bingkai
+  String? currentFrameDesignId; 
 
   @override
   void initState() {
@@ -65,15 +65,12 @@ class _HomeState extends State<Homescreen> {
       if (idUser != 0) {
         await Future.wait([
           fetchAdaptiveProfile(), 
-          fetchEquippedFrame(), // Ambil data bingkai yang sedang dipakai
+          fetchEquippedFrame(), 
           handleStreakInteraction(),
           getAllUser(),
           getEnrolledCourse(),
           fetchChallenges(),
-        ]).catchError((err) {
-          debugPrint("Beberapa data gagal dimuat: $err");
-          return [];
-        });
+        ]);
 
         ActivityService.sendLog(
           userId: idUser, 
@@ -88,13 +85,13 @@ class _HomeState extends State<Homescreen> {
     }
   }
 
-  // Ambil desain bingkai dari database
   Future<void> fetchEquippedFrame() async {
     try {
       final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/usertrade/equipped/$idUser"));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted && data != null && data['trade'] != null) {
+          // PERBAIKAN: Simpan string gambar mentah dari database
           setState(() => currentFrameDesignId = data['trade']['image']?.toString());
         } else {
           setState(() => currentFrameDesignId = null);
@@ -102,6 +99,18 @@ class _HomeState extends State<Homescreen> {
       }
     } catch (e) {
       debugPrint("Gagal fetch bingkai di Home: $e");
+    }
+  }
+
+  // HELPER UNTUK RENDER BINGKAI DINAMIS (Penting!)
+  Widget _buildFrameWidget(String path, double size) {
+    if (path.startsWith('http')) {
+      return Image.network(GlobalVar.formatImageUrl(path), fit: BoxFit.contain);
+    } else if (path.contains('/')) {
+      return Image.asset(path, fit: BoxFit.contain);
+    } else {
+      return Image.asset('lib/assets/Frames/$path.png', fit: BoxFit.contain, 
+        errorBuilder: (context, error, stackTrace) => const SizedBox());
     }
   }
 
@@ -153,7 +162,7 @@ class _HomeState extends State<Homescreen> {
       }
       if (foundCourse == null && allCourses.isNotEmpty) {
         foundCourse = allCourses.first;
-        await pref.setInt('lastestSelectedCourse', foundCourse.id);
+        await pref.setInt('lastestSelectedCourse', foundCourse!.id);
       }
 
       final badgeResult = await BadgeService.getUserBadgeListByUserId(idUser);
@@ -266,7 +275,6 @@ class _HomeState extends State<Homescreen> {
     );
   }
 
-  // IMPLEMENTASI LAYERING BINGKAI PADA HEADER
   Widget _buildProfileHeader(Color clusterColor, IconData clusterIcon) {
     String? img = user?.image;
     return Padding(
@@ -301,13 +309,11 @@ class _HomeState extends State<Homescreen> {
             ),
           ),
           
-          // --- BAGIAN LAYERING BINGKAI ---
           GestureDetector(
             onTap: () => widget.updateIndex(4),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Layer 1: Foto Profil Dasar
                 Container(
                   width: 65,
                   height: 65,
@@ -327,8 +333,8 @@ class _HomeState extends State<Homescreen> {
                   ),
                 ),
                 
-                // Layer 2: Bingkai PNG (Jika Ada)
-                if (currentFrameDesignId != null && currentFrameDesignId != "null")
+                // PERBAIKAN: Layering Bingkai dengan Helper Widget
+                if (currentFrameDesignId != null && currentFrameDesignId != "null" && currentFrameDesignId!.isNotEmpty)
                   TweenAnimationBuilder<double>(
                     tween: Tween<double>(begin: 0.8, end: 1.0),
                     duration: const Duration(milliseconds: 600),
@@ -337,13 +343,9 @@ class _HomeState extends State<Homescreen> {
                       return Transform.scale(
                         scale: scale,
                         child: SizedBox(
-                          width: 90, // Ukuran bingkai lebih besar dari foto (65 vs 90)
-                          height: 90,
-                          child: Image.asset(
-                            'lib/assets/Frames/$currentFrameDesignId.png',
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) => const SizedBox(),
-                          ),
+                          width: 95, 
+                          height: 95,
+                          child: _buildFrameWidget(currentFrameDesignId!, 95),
                         ),
                       );
                     }

@@ -154,10 +154,12 @@ class _TradeScreenState extends State<TradeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final avatarItems = trades.where((t) => t.category == "AVATAR" || t.title.toLowerCase().contains('avatar')).toList();
-    final shopFrames = trades.where((t) => t.category == "FRAME" || t.title.toLowerCase().contains('frame') || t.image.toLowerCase().contains('frame')).toList();
-    final rewardTrades = trades.where((t) => t.category == "REWARD" && !t.title.toLowerCase().contains('avatar') && !t.title.toLowerCase().contains('frame')).toList();
+    // FILTER BERDASARKAN KATEGORI DB UNTUK TAB
+    final avatarItems = trades.where((t) => t.category == "AVATAR").toList();
+    final shopFrames = trades.where((t) => t.category == "FRAME").toList();
+    final rewardTrades = trades.where((t) => t.category == "REWARD").toList();
 
+    // RULE PROFIL: Achiever & Free Spirit tidak lihat Tab Shop
     bool showRewards = userType != "Disruptors";
     bool showShop = (userType != "Achievers" && userType != "Free Spirits");
     int tabCount = 1 + (showRewards ? 1 : 0) + (showShop ? 1 : 0);
@@ -184,7 +186,7 @@ class _TradeScreenState extends State<TradeScreen> {
             ],
           ),
         ),
-        body: SafeArea( // Tambahkan SafeArea agar tidak mepet ke navigasi bawah HP
+        body: SafeArea( 
           child: isLoading
               ? const Center(child: CircularProgressIndicator(color: AppColors.primaryColor))
               : TabBarView(
@@ -218,14 +220,13 @@ class _TradeScreenState extends State<TradeScreen> {
     );
   }
 
-  // Perbaikan Grid Avatars agar tombol tidak mepet
   Widget _buildAvatarGrid(List<TradeModel> items) {
     if (items.isEmpty) return const Center(child: Text("Avatar tidak tersedia"));
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), // Tambah padding bawah
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2, 
-          childAspectRatio: 0.68, // DIUBAH: dikecilkan rasionya agar card lebih panjang ke bawah
+          childAspectRatio: 0.68, 
           crossAxisSpacing: 12, 
           mainAxisSpacing: 12),
       itemCount: items.length,
@@ -237,7 +238,7 @@ class _TradeScreenState extends State<TradeScreen> {
           elevation: 3,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 8.0), // Beri ruang di dalam card
+            padding: const EdgeInsets.only(bottom: 8.0),
             child: Column(
               children: [
                 Expanded(
@@ -271,14 +272,13 @@ class _TradeScreenState extends State<TradeScreen> {
     );
   }
 
-  // Perbaikan Grid Shop agar tombol tidak mepet
   Widget _buildShopGrid(List<TradeModel> frames) {
     if (frames.isEmpty) return const Center(child: Text("Bingkai tidak ditemukan"));
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), // Tambah padding bawah
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2, 
-          childAspectRatio: 0.60, // DIUBAH: dikecilkan agar card punya ruang untuk teks dan tombol
+          childAspectRatio: 0.60, 
           crossAxisSpacing: 15, 
           mainAxisSpacing: 15),
       itemCount: frames.length,
@@ -388,7 +388,7 @@ class _TradeScreenState extends State<TradeScreen> {
                 ElevatedButton(
                     onPressed: () async {
                       Navigator.pop(ctx);
-                      bool success = await TradeService.buyShopItem(widget.user.id, item.id, item.priceInPoints);
+                      bool success = await TradeService.buyShopItem(widget.user.id, item.id);
                       if (success) {
                         if (!mounted) return;
                         _showSuccessAnimation("Berhasil Ditukar!");

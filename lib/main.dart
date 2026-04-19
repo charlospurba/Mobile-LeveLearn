@@ -1,3 +1,4 @@
+import 'package:app/global_var.dart';
 import 'package:app/utils/colors.dart';
 import 'package:app/view/login_screen.dart';
 import 'package:app/view/main_screen.dart';
@@ -17,14 +18,19 @@ void main() async {
       anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmdXdhdGNvcWNpdHF5a3ZydGJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyNDYyODEsImV4cCI6MjA4MTgyMjI4MX0.JGgZorny4tj7Zo5G7KfuA30dwpX3F5iL3tvLeJIeW4c",
     );
   } catch (e) {
-    debugPrint("Supabase sudah terinisialisasi atau error: $e");
+    debugPrint("Supabase error: $e");
   }
 
   final SharedPreferences prefs = await SharedPreferences.getInstance();
-  bool isFirstLaunch = prefs.getBool('firstLaunch') ?? true;
   
+  // --- SYNC SESSION KE GLOBAL VAR ---
+  GlobalVar.userId = prefs.getInt('userId') ?? 0;
+  GlobalVar.userName = prefs.getString('userName') ?? "";
+  
+  bool isFirstLaunch = prefs.getBool('firstLaunch') ?? true;
   String? token = prefs.getString('token');
-  bool isLoggedIn = token != null;
+  // User dianggap login jika punya token DAN userId tidak 0
+  bool isLoggedIn = token != null && GlobalVar.userId != 0;
 
   runApp(MyApp(isLoggedIn: isLoggedIn, isFirstLaunch: isFirstLaunch));
 }

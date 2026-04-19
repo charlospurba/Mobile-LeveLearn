@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:app/global_var.dart';
 import 'package:app/model/user.dart';
+import 'package:app/model/trade.dart'; // Import TradeModel
+import 'package:app/model/user_trade.dart';
+import 'package:app/service/trade_service.dart'; // Import TradeService
 import 'package:app/view/main_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -13,21 +16,19 @@ import 'package:path/path.dart' as path;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
 
-import 'package:app/view/profile_screen.dart';
 import '../service/user_service.dart';
 import '../utils/colors.dart';
 
 class UpdateProfile extends StatefulWidget {
   final Student user;
-  final List<AvatarModel> availableAvatars;
-
-  const UpdateProfile({super.key, required this.user, required this.availableAvatars});
+  // HAPUS availableAvatars statis
+  const UpdateProfile({super.key, required this.user});
 
   @override
   State<UpdateProfile> createState() => _UpdateProfileState();
 }
 
-class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProviderStateMixin {
+class _UpdateProfileState extends State<UpdateProfile> {
   Student? user;
   late SharedPreferences prefs;
   PlatformFile? photo;
@@ -36,8 +37,8 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
   TextEditingController passwordController = TextEditingController();
   
   String? selectedAvatarUrl;
-  Set<int> purchasedAvatarIds = {}; 
-  late TabController _tabController;
+  List<TradeModel> myOwnedAvatars = []; // Ganti ke TradeModel
+  bool isLoadingAvatars = true;
   String userType = "Disruptors"; 
 
   @override
@@ -46,7 +47,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     nameController.text = user?.name ?? '';
     usernameController.text = user?.username ?? '';
     selectedAvatarUrl = user?.image;
-    _tabController = TabController(length: 2, vsync: this);
     _loadData();
     super.initState();
   }
@@ -58,165 +58,102 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
   void _loadData() async {
     prefs = await SharedPreferences.getInstance();
     try {
-      final response = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/user/adaptive/${widget.user.id}"))
-          .timeout(const Duration(seconds: 15));
-          
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+      // 1. Fetch User Type
+      final adaptiveRes = await http.get(Uri.parse("${GlobalVar.baseUrl}/api/user/adaptive/${widget.user.id}"));
+      if (adaptiveRes.statusCode == 200) {
+        final data = jsonDecode(adaptiveRes.body);
         if (mounted) setState(() => userType = data['currentCluster'] ?? "Disruptors");
       }
 
-      List<int> dbAvatars = await UserService.getPurchasedAvatarsFromDb(widget.user.id);
+      // 2. FETCH AVATAR DARI TABEL USER_TRADE (DINAMIS)
+      final ownedTrades = await TradeService.getUserTrade(widget.user.id);
+      final allTrades = await TradeService.getAllTrades();
+      
+      // Ambil tradeId yang dimiliki user
+      final ownedIds = ownedTrades.map((ut) => ut.tradeId).toSet();
+      
       if (mounted) {
         setState(() {
-          purchasedAvatarIds = dbAvatars.toSet();
-          purchasedAvatarIds.add(1); 
+          // Filter hanya kategori AVATAR yang sudah dimiliki user
+          myOwnedAvatars = allTrades.where((t) => 
+            ownedIds.contains(t.id) && t.category == "AVATAR"
+          ).toList();
+          isLoadingAvatars = false;
         });
       }
     } catch (e) {
-      debugPrint("Sync Error: $e");
+      debugPrint("Sync Error Update Profile: $e");
+      if(mounted) setState(() => isLoadingAvatars = false);
     }
   }
 
-  int getAvatarPrice(int id) {
-    if (id <= 1) return 0;
-    if (id <= 4) return 100; 
-    if (id <= 6) return 200; 
-    if (id <= 8) return 250; 
-    if (id <= 10) return 300; 
-    return 350; 
-  }
-
   Future<void> _showAvatarSelectionDialog(BuildContext context) {
-    final myOwnedAvatars = widget.availableAvatars.where((a) => purchasedAvatarIds.contains(a.id)).toList();
-    final shopAvatars = widget.availableAvatars.where((a) => !purchasedAvatarIds.contains(a.id)).toList();
-
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true, 
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateModal) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          height: MediaQuery.of(context).size.height * 0.8, 
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-              const SizedBox(height: 15),
-              const Text('Avatar Gallery', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
-              const SizedBox(height: 10),
-              TabBar(
-                controller: _tabController, 
-                indicatorColor: AppColors.primaryColor, 
-                labelColor: AppColors.primaryColor, 
-                tabs: const [Tab(text: 'My Avatars'), Tab(text: 'Shop New')]
-              ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController, 
-                  children: [
-                    _buildAvatarGrid(myOwnedAvatars, isShop: false), 
-                    _buildAvatarGrid(shopAvatars, isShop: true),    
-                  ]
-                ),
-              ),
-              SizedBox(height: MediaQuery.of(context).padding.bottom + 10),
-            ],
-          ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        height: MediaQuery.of(context).size.height * 0.6, 
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            const SizedBox(height: 15),
+            const Text('My Avatar Collection', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, fontFamily: 'DIN_Next_Rounded')),
+            const Text('Beli avatar baru di menu Trade Center', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 15),
+            Expanded(
+              child: isLoadingAvatars 
+                ? const Center(child: CircularProgressIndicator())
+                : _buildAvatarGrid(myOwnedAvatars),
+            ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 10),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildAvatarGrid(List<AvatarModel> items, {required bool isShop}) {
-    if (items.isEmpty) return Center(child: Text(isShop ? "Semua avatar telah dibeli!" : "Belum ada avatar.", style: const TextStyle(fontFamily: 'DIN_Next_Rounded')));
+  Widget _buildAvatarGrid(List<TradeModel> items) {
+    if (items.isEmpty) return const Center(child: Text("Belum memiliki koleksi avatar.", style: TextStyle(fontFamily: 'DIN_Next_Rounded')));
+    
     return GridView.builder(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: 10),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.75
+        crossAxisCount: 3, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.0
       ),
       itemCount: items.length,
       itemBuilder: (context, index) {
         final avatar = items[index];
-        final price = getAvatarPrice(avatar.id);
-        final isSelected = selectedAvatarUrl == avatar.imageUrl;
+        final isSelected = selectedAvatarUrl == avatar.image;
 
         return GestureDetector(
-          onTap: () async {
-            if (!isShop) {
-              setState(() { selectedAvatarUrl = avatar.imageUrl; photo = null; });
-              Navigator.pop(context);
-            } else {
-              _processPurchase(avatar, price);
-            }
+          onTap: () {
+            setState(() { 
+              selectedAvatarUrl = avatar.image; 
+              photo = null; 
+            });
+            Navigator.pop(context);
           },
-          child: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(15),
-                    border: Border.all(color: isSelected ? AppColors.primaryColor : (isShop ? Colors.grey.shade300 : Colors.green), width: 2),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: isSelected ? AppColors.primaryColor : Colors.grey.shade300, width: 3),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: avatar.image.startsWith('http') 
+                ? Image.network(GlobalVar.formatImageUrl(avatar.image), fit: BoxFit.cover)
+                : Image.asset('lib/assets/avatars/${avatar.image.split('.').first}.jpeg', 
+                    fit: BoxFit.cover,
+                    errorBuilder: (c,e,s) => Image.asset(avatar.image, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Icon(Icons.person)),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(avatar.imageUrl, fit: BoxFit.cover),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(isShop ? "$price Pts" : "Owned", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isShop ? Colors.black87 : Colors.green, fontFamily: 'DIN_Next_Rounded')),
-            ],
+            ),
           ),
         );
       },
     );
-  }
-
-  Future<void> _processPurchase(AvatarModel avatar, int price) async {
-    int currentPoints = user?.points ?? 0;
-    if (currentPoints < price) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Poin tidak mencukupi.')));
-      return;
-    }
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Text('Konfirmasi', style: TextStyle(fontFamily: 'DIN_Next_Rounded')),
-        content: Text('Beli avatar seharga $price poin?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryColor),
-            onPressed: () => Navigator.pop(ctx, true), 
-            child: const Text('Beli', style: TextStyle(color: Colors.white))
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator()));
-      bool success = await UserService.savePurchasedAvatarToDb(user!.id, avatar.id);
-      
-      if (mounted) Navigator.pop(context); 
-
-      if (success) {
-        setState(() {
-          user!.points = currentPoints - price;
-          user!.image = avatar.imageUrl;
-          purchasedAvatarIds.add(avatar.id);
-          selectedAvatarUrl = avatar.imageUrl;
-        });
-        await UserService.updateUser(user!); 
-        if (mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avatar berhasil dibeli!')));
-           Navigator.pop(context);
-        }
-      }
-    }
   }
 
   @override
@@ -266,7 +203,6 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
                   user!.username = usernameController.text;
                   user!.image = selectedAvatarUrl;
                   
-                  // Menugaskan password baru sebelum dikirim ke server via updateUser
                   if (passwordController.text.isNotEmpty) {
                     user!.password = passwordController.text;
                   }
@@ -274,16 +210,13 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
                   await UserService.updateUser(user!);
                   
                   if (mounted) {
-                    Navigator.pop(context); // Tutup loading circle
-                    _showDialog(context);   // Buka dialog sukses
+                    Navigator.pop(context); 
+                    _showDialog(context); 
                   }
                 } catch (e) {
                   if (mounted) {
-                    Navigator.pop(context); // Tutup loading circle
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('Gagal menyimpan profil: $e'),
-                      backgroundColor: Colors.red,
-                    ));
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menyimpan profil: $e'), backgroundColor: Colors.red));
                   }
                 }
               },
@@ -314,7 +247,7 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
                 Navigator.pop(context);
                 _pickFromGallery();
               }),
-              ListTile(leading: const Icon(Icons.face_retouching_natural), title: const Text("Gallery Avatar", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), onTap: () {
+              ListTile(leading: const Icon(Icons.face_retouching_natural), title: const Text("Koleksi Avatar (Beli di Trade)", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), onTap: () {
                 Navigator.pop(context);
                 _showAvatarSelectionDialog(context);
               }),
@@ -349,26 +282,10 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
     try {
       final storagePath = 'profile/$filename';
       final fileBytes = await file.readAsBytes();
-
-      await Supabase.instance.client.storage
-          .from('images')
-          .uploadBinary(
-            storagePath, 
-            fileBytes,
-            fileOptions: const FileOptions(
-              upsert: true,
-              contentType: 'image/jpeg',
-            ), 
-          );
-
-      selectedAvatarUrl = Supabase.instance.client.storage
-          .from('images')
-          .getPublicUrl(storagePath);
-          
+      await Supabase.instance.client.storage.from('images').uploadBinary(storagePath, fileBytes, fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'));
+      selectedAvatarUrl = Supabase.instance.client.storage.from('images').getPublicUrl(storagePath);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.red));
-      }
+      debugPrint("Upload error: $e");
     }
   }
 
@@ -382,14 +299,8 @@ class _UpdateProfileState extends State<UpdateProfile> with SingleTickerProvider
   void _showDialog(BuildContext context) {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      title: const Text("Success", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), 
-      content: const Text("Profile Updated.", style: TextStyle(fontFamily: 'DIN_Next_Rounded')), 
-      actions: [
-        TextButton(onPressed: () { 
-          Navigator.popUntil(context, (r) => r.isFirst); 
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => const Mainscreen(navIndex: 4))); 
-        }, child: const Text("OK"))
-      ]
+      title: const Text("Success"), content: const Text("Profile Updated."), 
+      actions: [TextButton(onPressed: () { Navigator.popUntil(context, (r) => r.isFirst); Navigator.pushReplacement(context, MaterialPageRoute(builder: (c) => const Mainscreen(navIndex: 4))); }, child: const Text("OK"))]
     ));
   }
 }

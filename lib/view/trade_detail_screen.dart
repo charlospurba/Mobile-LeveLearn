@@ -33,13 +33,10 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
   UserBadge? selectedBadgeToTrade;
   late Student user;
 
-  // --- LOGIKA KATEGORI ---
-  // Avatar sekarang resmi hanya menggunakan Point (Shop Item)
-  bool get isAvatar => widget.trade.category == "AVATAR" || widget.trade.title.toLowerCase().contains('avatar');
-  
-  bool get isFrame => widget.trade.category == "FRAME" || widget.trade.image.toLowerCase().contains('frame');
-  
-  // Item kategori Shop (Avatar & Frame) tidak butuh Badge
+  // --- LOGIKA KATEGORI DINAMIS ---
+  // Sekarang menggunakan field 'category' dari database yang diatur Admin
+  bool get isAvatar => widget.trade.category == "AVATAR";
+  bool get isFrame => widget.trade.category == "FRAME";
   bool get isShopItem => isAvatar || isFrame;
 
   @override
@@ -51,7 +48,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
 
   Future<void> _initData() async {
     pref = await SharedPreferences.getInstance();
-    // Hanya fetch badge jika item yang dipilih adalah REWARD (bukan avatar/frame)
+    // Hanya fetch badge jika item yang dipilih adalah REWARD
     if (!isShopItem) {
       _fetchAvailableBadgesForTrade();
     }
@@ -75,45 +72,25 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
     }
   }
 
+  // AMBIL HARGA LANGSUNG DARI DATABASE (ADMIN PANEL)
   int _calculateReqPoint() {
-    // Sinkronisasi dengan price list di UserController.js
-    if (isAvatar) {
-      final Map<int, int> prices = { 
-        1: 0, 2: 100, 3: 100, 4: 100, 5: 200, 6: 200, 
-        7: 250, 8: 250, 9: 300, 10: 300, 11: 350, 12: 350 
-      };
-      return prices[widget.trade.id] ?? (widget.trade.priceInPoints > 0 ? widget.trade.priceInPoints : 500);
-    }
-    
-    if (isFrame) {
-      return widget.trade.priceInPoints > 0 ? widget.trade.priceInPoints : 2500;
-    }
-
-    // Untuk REWARD yang butuh lencana
-   String type = widget.trade.requiredBadgeType?.toUpperCase() ?? "";
-    switch (type) {
-      case 'BEGINNER': return 2000;
-      case 'INTERMEDIATE': return 4000;
-      case 'ADVANCE': return 6000;
-      default: return widget.trade.priceInPoints;
-    }
+    return widget.trade.priceInPoints;
   }
 
   bool _isPurchaseValid() {
     int reqPoint = _calculateReqPoint();
     if ((user.points ?? 0) < reqPoint) return false;
     
-    // Jika Avatar atau Frame, validasi berhenti di poin saja
+    // Jika Shop Item (Avatar/Frame), validasi hanya poin
     if (isShopItem) return true; 
     
-    // Jika Reward, wajib pilih salah satu lencana yang dimiliki
+    // Jika Reward, wajib pilih lencana
     return selectedBadgeToTrade != null;
   }
 
   Future<void> _processRedeem() async {
     int reqPoint = _calculateReqPoint();
     
-    // Loading dialog
     showDialog(
       context: context, 
       barrierDismissible: false, 
@@ -124,8 +101,8 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
       bool success = false;
 
       if (isShopItem) {
-        // Transaksi HANYA POIN untuk Avatar & Frame
-        success = await TradeService.buyShopItem(user.id, widget.trade.id, reqPoint);
+        // Transaksi HANYA POIN (Harga dicek ulang di Backend demi keamanan)
+        success = await TradeService.buyShopItem(user.id, widget.trade.id);
       } else {
         // Transaksi REWARD (Poin + Badge)
         success = await TradeService.createUserTrade(user.id, widget.trade.id);
@@ -136,7 +113,7 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
         user.points = (user.points ?? 0) - reqPoint;
         await UserService.updateUserPoints(user);
 
-        // Jika ini reward, tandai badge sebagai "sudah digunakan/purchased"
+        // Jika reward, tandai badge sebagai terpakai
         if (!isShopItem && selectedBadgeToTrade != null) {
           await UserBadgeService.updateUserBadgeStatus(selectedBadgeToTrade!.id, true);
         }
@@ -144,17 +121,16 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
         if (!mounted) return;
         Navigator.pop(context); // Tutup loading
         
-        // Pindah ke screen sukses
         Navigator.pushReplacement(
           context, 
           MaterialPageRoute(builder: (c) => WhatADealScreen(message: "Selamat! ${widget.trade.title} berhasil didapatkan."))
         );
       } else {
-        throw Exception("Gagal memproses transaksi di server.");
+        throw Exception("Gagal memproses transaksi.");
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Tutup loading
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Terjadi Kesalahan: $e"), backgroundColor: Colors.red)
         );
@@ -193,10 +169,8 @@ class _TradeDetailScreenState extends State<TradeDetailScreen> {
                   ),
                   const SizedBox(height: 30),
                   
-                  // Card Persyaratan
                   _buildRequirementCard(reqPoint),
                   
-                  // Picker Badge (Hanya muncul jika kategori REWARD)
                   if (!isShopItem) ...[
                     const SizedBox(height: 25),
                     const Text("Pilih Lencana untuk Ditukar:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),

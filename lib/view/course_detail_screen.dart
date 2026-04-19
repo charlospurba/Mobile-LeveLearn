@@ -74,8 +74,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
           
           final chapters = results[3] as List<Chapter>;
           listChapter = await getStatusChapter(chapters);
-
-          debugPrint("ADAPTIVE SYNC: User is $userType, DB Level: ${uc?.currentChapter}");
         }
       }
     } catch (e) {
@@ -121,16 +119,13 @@ class _CourseDetail extends State<CourseDetailScreen> {
     }
   }
 
-  // --- PERBAIKAN FUNGSI idOfBadge ---
-  // Sekarang mencari berdasarkan chapterId agar spesifik
   int idOfBadge(int chapterId) {
     if (listBadge == null || listBadge!.isEmpty) return 0;
     try {
-      // Mencari badge yang terhubung dengan ID chapter yang sedang dibuka
       final badge = listBadge!.firstWhere((i) => i.chapterId == chapterId);
       return badge.id;
     } catch (_) { 
-      return 0; // Kembalikan 0 jika chapter ini tidak punya badge
+      return 0; 
     }
   }
 
@@ -153,7 +148,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
               ),
             ),
             CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
               slivers: [
                 _buildSliverAppBar(),
                 isLoading
@@ -171,7 +165,6 @@ class _CourseDetail extends State<CourseDetailScreen> {
     return SliverAppBar(
       expandedHeight: 180.0,
       pinned: true,
-      elevation: 0,
       backgroundColor: const Color(0xFF441F7F),
       automaticallyImplyLeading: false,
       flexibleSpace: FlexibleSpaceBar(
@@ -201,13 +194,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
           ],
         ),
       ),
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Image.asset("lib/assets/LeveLearn.png", width: 150),
-          const SizedBox(width: 40),
-        ],
-      ),
+      title: Image.asset("lib/assets/LeveLearn.png", width: 150),
     );
   }
 
@@ -228,15 +215,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
       duration: Duration(milliseconds: 400 + (count * 50)),
       tween: Tween<double>(begin: 0.0, end: 1.0),
       curve: Curves.easeOut,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: child,
-          ),
-        );
-      },
+      builder: (context, value, child) => Opacity(opacity: value, child: child),
       child: Stack(
         alignment: Alignment.topCenter,
         clipBehavior: Clip.none,
@@ -247,10 +226,7 @@ class _CourseDetail extends State<CourseDetailScreen> {
               child: Center(
                 child: Container(
                   width: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD1C4E9),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                  color: const Color(0xFFD1C4E9),
                 ),
               ),
             ),
@@ -266,13 +242,11 @@ class _CourseDetail extends State<CourseDetailScreen> {
   Widget _decideChapterItem(int index) {
     if (uc == null) return const SizedBox();
     
-    if (userType == "Players" || userType == "Achievers" || userType == "Free Spirits") {
-        return _buildCourseItem(index);
-    }
+    // RULES PROFILE: Achievers, Players, & Free Spirits (Bebas Akses)
+    bool isAlwaysUnlocked = (userType == "Players" || userType == "Achievers" || userType == "Free Spirits");
+    bool isUnlockedByProgress = index <= uc!.currentChapter - 1;
 
-    bool isUnlockedByLevel = index <= uc!.currentChapter - 1;
-
-    if (isUnlockedByLevel) {
+    if (isAlwaysUnlocked || isUnlockedByProgress) {
       return _buildCourseItem(index);
     } else {
       return _buildCourseItemLocked(index, "Latih kompetensimu di level sebelumnya!");
@@ -283,6 +257,12 @@ class _CourseDetail extends State<CourseDetailScreen> {
     final chapter = listChapter[index];
     final isCurrent = uc != null && index == uc!.currentChapter - 1;
 
+    // LOGIKA PERBAIKAN JUDUL: Hanya Achievers & Players yang ada teks "Level X"
+    String displayedTitle = chapter.name;
+    if (userType == "Achievers" || userType == "Players") {
+      displayedTitle = "Level ${chapter.level}: ${chapter.name}";
+    }
+
     return Center(
       child: Stack(
         clipBehavior: Clip.none,
@@ -292,23 +272,15 @@ class _CourseDetail extends State<CourseDetailScreen> {
             margin: const EdgeInsets.only(top: 30),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF4A148C).withOpacity(0.2), 
-                  blurRadius: 10, 
-                  offset: const Offset(0, 5)
-                )
-              ],
+              boxShadow: [BoxShadow(color: const Color(0xFF4A148C).withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))],
             ),
             child: Material(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(24),
               child: InkWell(
                 borderRadius: BorderRadius.circular(24),
                 onTap: () async {
                   await updateStatus(index);
                   if (!mounted) return;
-
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -318,30 +290,20 @@ class _CourseDetail extends State<CourseDetailScreen> {
                         uc: uc!,
                         chLength: listChapter.length,
                         user: user!,
-                        chapterName: chapter.name,
-                        // --- PERBAIKAN PEMANGGILAN ---
-                        // Mengirim chapter.id agar idOfBadge bisa mencari badge yang tepat
+                        chapterName: displayedTitle, // Kirim judul sesuai aturan
                         idBadge: idOfBadge(chapter.id), 
                         level: chapter.level,
-                        updateProgress: (val) async {
-                           await _initialLoad();
-                        },
+                        updateProgress: (val) async => await _initialLoad(),
                       ),
                     ),
                   );
-
-                  await Future.delayed(const Duration(milliseconds: 600));
                   if (mounted) _initialLoad();
                 },
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
-                      gradient: const LinearGradient(
-                        begin: Alignment.topLeft, 
-                        end: Alignment.bottomRight, 
-                        colors: [Color(0xFF5E2B99), Color(0xFF441F7F)]
-                      ),
+                      gradient: const LinearGradient(colors: [Color(0xFF5E2B99), Color(0xFF441F7F)]),
                       border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5)),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 50, 20, 24),
@@ -358,7 +320,16 @@ class _CourseDetail extends State<CourseDetailScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        Text(chapter.name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white, fontFamily: 'DIN_Next_Rounded')),
+                        Text(
+                          displayedTitle, 
+                          textAlign: TextAlign.center, 
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold, 
+                            fontSize: 18, 
+                            color: Colors.white, 
+                            fontFamily: 'DIN_Next_Rounded'
+                          )
+                        ),
                       ],
                     ),
                   ),
@@ -366,33 +337,19 @@ class _CourseDetail extends State<CourseDetailScreen> {
               ),
             ),
           ),
-          Positioned(
-            top: 0,
-            child: _buildLevelCircle(chapter.level, isCurrent),
-          ),
-          if (isCurrent) 
-            Positioned(right: -10, bottom: 10, child: Image.asset('lib/assets/rocket.png', width: 45, height: 45)),
+          Positioned(top: 0, child: _buildLevelCircle(chapter.level, isCurrent)),
+          if (isCurrent) Positioned(right: -10, bottom: 10, child: Image.asset('lib/assets/rocket.png', width: 45, height: 45)),
         ],
       ),
     );
   }
 
-  Widget _buildLevelCircle(int level, bool isCurrent) {
-    return Container(
-      width: 60, height: 60,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: isCurrent ? [const Color(0xFF00E676), const Color(0xFF00C853)] : [Colors.grey.shade400, Colors.grey.shade600]
-        ),
-        border: Border.all(color: Colors.white, width: 3),
-      ),
-      child: Center(child: Text("$level", style: const TextStyle(fontFamily: 'Modak', fontSize: 24, color: Colors.white))),
-    );
-  }
-
   Widget _buildCourseItemLocked(int index, String message) {
     final chapter = listChapter[index];
+    
+    // Untuk item terkunci (pasti Free Spirits atau Disruptors), jangan pakai teks "Level"
+    String displayedTitle = chapter.name;
+
     return Padding(
       padding: const EdgeInsets.only(top: 40),
       child: Stack(
@@ -409,9 +366,20 @@ class _CourseDetail extends State<CourseDetailScreen> {
               padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 20),
               child: Column(
                 children: [
-                  Icon(Icons.lock_rounded, size: 40, color: Colors.grey.shade300),
-                  const SizedBox(height: 12),
-                  Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+                  Text(
+                    displayedTitle, 
+                    textAlign: TextAlign.center, 
+                    style: TextStyle(
+                      fontSize: 16, 
+                      color: Colors.grey.shade500, 
+                      fontWeight: FontWeight.bold, 
+                      fontFamily: 'DIN_Next_Rounded'
+                    )
+                  ),
+                  const SizedBox(height: 10),
+                  Icon(Icons.lock_rounded, size: 30, color: Colors.grey.shade400),
+                  const SizedBox(height: 8),
+                  Text(message, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                 ],
               ),
             ),
@@ -422,13 +390,22 @@ class _CourseDetail extends State<CourseDetailScreen> {
     );
   }
 
+  Widget _buildLevelCircle(int level, bool isCurrent) {
+    return Container(
+      width: 60, height: 60,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(colors: isCurrent ? [const Color(0xFF00E676), const Color(0xFF00C853)] : [Colors.grey.shade400, Colors.grey.shade600]),
+        border: Border.all(color: Colors.white, width: 3),
+      ),
+      child: Center(child: Text("$level", style: const TextStyle(fontFamily: 'Modak', fontSize: 24, color: Colors.white))),
+    );
+  }
+
   Widget _buildStatusIcon(bool isDone, IconData icon) {
     return Container(
       padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: isDone ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.1), 
-        shape: BoxShape.circle
-      ),
+      decoration: BoxDecoration(color: isDone ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.1), shape: BoxShape.circle),
       child: Icon(icon, size: 18, color: isDone ? const Color(0xFFFFD700) : Colors.white24),
     );
   }
